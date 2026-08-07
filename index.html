@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>NutriSuivi</title>
+  <meta name="description" content="Suivi nutritionnel simple et honnête, en français." />
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#2C6E49" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="NutriSuivi" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <style> html, body { margin: 0; background: #F4F6F1; } #root { min-height: 100vh; } </style>
+
+  <!-- ============ COMPTES + SYNCHRO (optionnel) ============
+       Vide  -> l'app reste 100% locale (données sur cet appareil).
+       Rempli avec ta config Firebase -> login/mot de passe + synchro entre appareils.
+       (Firebase console -> Project settings -> "Your apps" -> Web app -> firebaseConfig) -->
+  <script>
+    window.FIREBASE_CONFIG = {
+      // apiKey: "AIza...",
+      // authDomain: "ton-projet.firebaseapp.com",
+      // projectId: "ton-projet",
+      // storageBucket: "ton-projet.appspot.com",
+      // messagingSenderId: "1234567890",
+      // appId: "1:1234567890:web:abcdef"
+    };
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="./app.bundle.js"></script>
+</body>
+</html>
