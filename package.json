@@ -1,0 +1,17 @@
+{
+  "name": "nutrisuivi-build",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "esbuild main.jsx --bundle --minify --format=iife --jsx=transform --define:process.env.NODE_ENV='\"production\"' --outfile=app.bundle.js"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7",
+    "firebase": "^10.13.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}

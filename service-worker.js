@@ -1,22 +1,47 @@
-// Cache "app shell" pour l'installation et le hors-ligne.
-const CACHE = "nutrisuivi-v1";
-const ASSETS = ["./", "./index.html", "./app.bundle.js", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+// NutriSuivi service-worker — stratégie network-first pour toujours servir la dernière version.
+// À copier dans le dépôt GitHub `nutrisuivi/` à côté d'index.html.
+// Le numéro de cache change à chaque build ; le SW s'active immédiatement (skipWaiting).
+
+const CACHE = "nutrisuivi-v1.6";
+const CORE = ["./", "./index.html", "./app.bundle.js", "./manifest.json", "./icon-192.png", "./icon-512.png"];
+
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE).catch(() => {})));
 });
+
 self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
+
+self.addEventListener("message", (e) => {
+  if (e.data === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Network-first pour les ressources de l'app (HTML/JS/CSS/manifest) ; cache en secours hors-ligne.
+// Ne touche pas aux requêtes Firebase / Anthropic / autres origines.
 self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  // Réseau d'abord pour l'API IA et Open Food Facts ; cache pour le reste.
-  if (url.hostname.includes("openfoodfacts") || url.hostname.includes("anthropic")) return;
-  e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      if (e.request.method === "GET" && res.ok && url.origin === location.origin) {
-        const copy = res.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy));
+  const req = e.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
+
+  e.respondWith((async () => {
+    try {
+      const fresh = await fetch(req, { cache: "no-store" });
+      if (fresh && fresh.ok) {
+        const copy = fresh.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
       }
-      return res;
-    }).catch(() => caches.match("./index.html")))
-  );
+      return fresh;
+    } catch (err) {
+      const cached = await caches.match(req);
+      if (cached) return cached;
+      throw err;
+    }
+  })());
 });
