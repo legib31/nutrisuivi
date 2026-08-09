@@ -553,7 +553,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "1.6";
+const VERSION = "1.7";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -817,6 +817,7 @@ export default function App() {
   }
   function deleteFavorite(id) { setFavMeals((f) => f.filter((x) => x.id !== id)); }
   function renameFavorite(id, nom) { setFavMeals((f) => f.map((x) => x.id === id ? { ...x, nom } : x)); }
+  function updateFavorite(id, items) { setFavMeals((f) => f.map((x) => x.id === id ? { ...x, items } : x)); }
   function addFavoriteToDay(fav, repasId) {
     const entries = fav.items.map((it) => ({ ...it, id: uid(), repas: repasId }));
     setDiary((d) => ({ ...d, [dateSel]: [...(d[dateSel] || []), ...entries] }));
@@ -974,7 +975,8 @@ export default function App() {
           <div style={{ maxWidth: isDesktop ? 760 : "none", margin: "0 auto" }}>
             <Liste catalog={catalog} customFoods={customFoods} setCustomFoods={setCustomFoods}
               customSports={customSports} setCustomSports={setCustomSports} poids={profil.poids}
-              favMeals={favMeals} onDeleteFavorite={deleteFavorite} onRenameFavorite={renameFavorite} />
+              favMeals={favMeals} onDeleteFavorite={deleteFavorite} onRenameFavorite={renameFavorite}
+              onUpdateFavorite={updateFavorite} />
           </div>
         )}
         {tab === "graphique" && (
@@ -1262,32 +1264,42 @@ async function fetchOFF(code) {
 function Scanner({ onClose, onResult }) {
   const videoRef = useRef();
   const streamRef = useRef();
-  const [status, setStatus] = useState("init");
+  const [status, setStatus] = useState("init"); // init, scanning, nocam, nodetector, loading, notfound, error
   const [manual, setManual] = useState("");
   const [msg, setMsg] = useState("");
+  const [detail, setDetail] = useState("");
 
   function stopCam() { try { streamRef.current && streamRef.current.getTracks().forEach((t) => t.stop()); } catch {} }
 
   async function lookup(code) {
-    stopCam(); setStatus("loading"); setMsg(`Code ${code}…`);
+    stopCam(); setStatus("loading"); setMsg(`Recherche du code ${code}…`);
     try {
       const prod = await fetchOFF(code);
       if (prod) onResult(prod);
-      else { setStatus("notfound"); setMsg(`Produit ${code} introuvable dans Open Food Facts.`); }
-    } catch { setStatus("error"); setMsg("Connexion à Open Food Facts impossible ici — cela fonctionnera dans l'app installée/déployée. Tu peux encoder les valeurs à la main."); }
+      else { setStatus("notfound"); setMsg(`Produit ${code} introuvable dans Open Food Facts. Encode-le à la main — il sera sauvegardé dans ta liste pour toujours.`); }
+    } catch { setStatus("error"); setMsg("Connexion à Open Food Facts impossible. Vérifie ta connexion, ou encode les valeurs à la main."); }
   }
 
   useEffect(() => {
     let active = true, raf;
     (async () => {
-      if (typeof window === "undefined" || !("BarcodeDetector" in window)) { setStatus("nodetector"); return; }
+      if (typeof window === "undefined") { setStatus("nodetector"); return; }
+      if (!("BarcodeDetector" in window)) {
+        setStatus("nodetector");
+        setDetail("Ton navigateur ne peut pas lire directement les codes-barres (fréquent sur iPhone et sur PC). Utilise le champ ci-dessous : tape le code (13 chiffres au dos du produit) et c'est fait.");
+        return;
+      }
       let detector;
       try { detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] }); }
-      catch { setStatus("nodetector"); return; }
+      catch { setStatus("nodetector"); setDetail("Le lecteur de codes-barres n'a pas pu démarrer. Utilise le code manuel ci-dessous."); return; }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("nocam"); setDetail("Aucune caméra détectée. Utilise le code manuel ci-dessous."); return;
+      }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+        if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+        if (videoRef.current) { videoRef.current.srcObject = stream; try { await videoRef.current.play(); } catch {} }
         setStatus("scanning");
         const tick = async () => {
           if (!active) return;
@@ -1298,7 +1310,12 @@ function Scanner({ onClose, onResult }) {
           raf = requestAnimationFrame(tick);
         };
         tick();
-      } catch { setStatus("nocam"); }
+      } catch (e) {
+        setStatus("nocam");
+        setDetail(e && e.name === "NotAllowedError"
+          ? "Tu n'as pas autorisé l'accès à la caméra. Autorise-le dans les réglages du navigateur, ou utilise le code manuel ci-dessous."
+          : "La caméra n'est pas accessible (déjà utilisée par une autre app, ou bloquée). Utilise le code manuel ci-dessous.");
+      }
     })();
     return () => { active = false; if (raf) cancelAnimationFrame(raf); stopCam(); };
   }, []);
@@ -1312,27 +1329,37 @@ function Scanner({ onClose, onResult }) {
           <button style={S.del} onClick={() => { stopCam(); onClose(); }}>×</button>
         </div>
 
+        <div style={{ ...S.miniMuted, background: "#EAF1EB", borderRadius: 10, padding: "8px 10px", marginBottom: 12, lineHeight: 1.5, fontSize: 12 }}>
+          Une fois trouvé, le produit est <b>sauvegardé pour toujours</b> dans ta liste — tu ne rescannes plus.
+        </div>
+
         {status === "scanning" && (
-          <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000" }}>
-            <video ref={videoRef} playsInline muted style={{ width: "100%", display: "block", maxHeight: 260, objectFit: "cover" }} />
+          <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", marginBottom: 10 }}>
+            <video ref={videoRef} playsInline muted autoPlay style={{ width: "100%", display: "block", maxHeight: 280, objectFit: "cover", background: "#000" }} />
             <div style={{ position: "absolute", inset: "32% 12%", border: "2px solid rgba(255,255,255,.85)", borderRadius: 10 }} />
+            <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 11, textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>
+              Vise le code-barres · si l'image reste noire, ta caméra est peut-être couverte
+            </div>
           </div>
         )}
         {status === "init" && <div style={{ ...S.miniMuted, textAlign: "center", padding: 12 }}>Initialisation de la caméra…</div>}
         {status === "loading" && <div style={{ ...S.miniMuted, textAlign: "center", padding: 12 }}>{msg}</div>}
-        {(status === "nocam" || status === "nodetector" || status === "notfound" || status === "error") && (
-          <div style={{ ...S.miniMuted, textAlign: "center", padding: 12, color: status === "nodetector" || status === "nocam" ? C.muted : C.red }}>
-            {status === "nodetector" && "Le scan caméra n'est pas dispo dans cette vue. Saisis le code à la main ci-dessous (ça marchera pleinement une fois l'app installée)."}
-            {status === "nocam" && "Caméra indisponible ici. Saisis le code à la main ci-dessous."}
-            {(status === "notfound" || status === "error") && msg}
+        {(status === "nocam" || status === "nodetector") && (
+          <div style={{ background: "#FCF3E6", borderRadius: 10, padding: "10px 12px", marginBottom: 10, fontSize: 13, lineHeight: 1.5, color: "#7A5A18" }}>
+            <b>{status === "nodetector" ? "Lecture caméra indisponible" : "Caméra bloquée"}</b><br />
+            {detail}
           </div>
         )}
+        {(status === "notfound" || status === "error") && (
+          <div style={{ ...S.miniMuted, textAlign: "center", padding: 12, color: C.red }}>{msg}</div>
+        )}
 
-        <div style={{ marginTop: 14 }}>
+        <div style={{ marginTop: 4 }}>
           <div style={S.sectionLabel}>Ou entre le code-barres à la main</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input style={{ ...S.input, flex: 1 }} inputMode="numeric" placeholder="ex : 5410228…"
-              value={manual} onChange={(e) => setManual(e.target.value)} />
+            <input style={{ ...S.input, flex: 1 }} inputMode="numeric" placeholder="ex : 5410228123456"
+              value={manual} onChange={(e) => setManual(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && manual.trim() && lookup(manual.trim())} />
             <button style={{ ...S.primaryBtn, marginTop: 0, width: "auto", padding: "12px 16px" }}
               onClick={() => manual.trim() && lookup(manual.trim())}>Chercher</button>
           </div>
@@ -1988,11 +2015,12 @@ function SportSheet({ sports, poids, date, onClose, onAdd, onCreate }) {
 }
 
 /* ============================= LISTE ============================= */
-function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite }) {
+function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite, onUpdateFavorite }) {
   const [view, setView] = useState("aliments");
   const [q, setQ] = useState("");
   const [form, setForm] = useState(null);
   const [sportForm, setSportForm] = useState(null);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const filtered = catalog.filter((f) => norm(f.nom).includes(norm(q)));
   const parGroupe = GRP_ORDER.map((g) => ({ g, items: filtered.filter((f) => f.grp === g) })).filter((x) => x.items.length);
@@ -2025,11 +2053,19 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
 
       {view === "aliments" && (
         <>
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 4px" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, padding: "0 4px", flexWrap: "wrap" }}>
+            <button style={{ ...S.addSmall, background: C.ink }} onClick={() => setScanOpen(true)}>
+              📷 Scanner un code-barres
+            </button>
             <button style={S.addSmall} onClick={() => setForm(form ? null : { grp: "proteine" })}>
               {form ? "Fermer" : "＋ Nouvel aliment"}
             </button>
           </div>
+
+          {scanOpen && (
+            <Scanner onClose={() => setScanOpen(false)}
+              onResult={(prod) => { setForm({ ...prod, grp: prod.grp || "plat" }); setScanOpen(false); }} />
+          )}
 
           {form && (
             <div style={S.card}>
@@ -2134,7 +2170,8 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
       )}
 
       {view === "favoris" && (
-        <FavorisView favMeals={favMeals} onDelete={onDeleteFavorite} onRename={onRenameFavorite} />
+        <FavorisView favMeals={favMeals} onDelete={onDeleteFavorite} onRename={onRenameFavorite}
+          onUpdate={onUpdateFavorite} catalog={catalog} />
       )}
     </div>
   );
@@ -2303,8 +2340,32 @@ function RecettesView({ catalog, customFoods, setCustomFoods }) {
   );
 }
 
-function FavorisView({ favMeals, onDelete, onRename }) {
-  if (!favMeals.length) {
+function FavorisView({ favMeals, onDelete, onRename, onUpdate, catalog }) {
+  const [editing, setEditing] = useState(null); // { id, items, q }
+
+  function recalcItem(it, newGrams) {
+    const g = Number(newGrams) || 0;
+    const food = catalog.find((f) => f.id === it.foodId);
+    if (food) {
+      return { ...it, grams: g, kcal: food.kcal * g / 100, p: food.p * g / 100, c: food.c * g / 100, f: food.f * g / 100, fib: (food.fib || 0) * g / 100, suc: (food.suc || 0) * g / 100 };
+    }
+    const factor = g / (it.grams || 1);
+    return { ...it, grams: g, kcal: (it.kcal || 0) * factor, p: (it.p || 0) * factor, c: (it.c || 0) * factor, f: (it.f || 0) * factor, fib: (it.fib || 0) * factor, suc: (it.suc || 0) * factor };
+  }
+  function addItem(food) {
+    const g = 100;
+    setEditing((e) => ({ ...e, items: [...e.items, { foodId: food.id, nom: food.nom, grams: g, kcal: food.kcal, p: food.p, c: food.c, f: food.f, fib: food.fib || 0, suc: food.suc || 0 }], q: "" }));
+  }
+  function save() {
+    onUpdate(editing.id, editing.items);
+    setEditing(null);
+  }
+
+  const suggestions = editing && editing.q
+    ? catalog.filter((f) => norm(f.nom).includes(norm(editing.q))).slice(0, 6)
+    : [];
+
+  if (!favMeals.length && !editing) {
     return (
       <div style={S.card}>
         <div style={S.sectionLabel}>Repas favoris</div>
@@ -2318,13 +2379,51 @@ function FavorisView({ favMeals, onDelete, onRename }) {
     <div style={S.card}>
       <div style={S.sectionLabel}>Repas favoris ({favMeals.length})</div>
       {favMeals.map((fav) => (
-        <div key={fav.id} style={S.entryRow}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, color: C.green }}>★ {fav.nom}</div>
-            <div style={S.miniMuted}>{fav.items.length} aliments · {Math.round(fav.items.reduce((a, i) => a + i.kcal, 0))} kcal</div>
+        <div key={fav.id}>
+          <div style={S.entryRow}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: C.green }}>★ {fav.nom}</div>
+              <div style={S.miniMuted}>{fav.items.length} aliments · {Math.round(fav.items.reduce((a, i) => a + (i.kcal || 0), 0))} kcal</div>
+            </div>
+            <button style={S.favBtn} onClick={() => setEditing({ id: fav.id, items: fav.items.map((i) => ({ ...i })), q: "" })}>Modifier</button>
+            <button style={S.favBtn} onClick={() => { const n = (window.prompt("Renommer le repas :", fav.nom) || "").trim(); if (n) onRename(fav.id, n); }}>Renommer</button>
+            <button style={{ ...S.del, marginLeft: 6 }} onClick={() => onDelete(fav.id)}>×</button>
           </div>
-          <button style={S.favBtn} onClick={() => { const n = (window.prompt("Renommer le repas :", fav.nom) || "").trim(); if (n) onRename(fav.id, n); }}>Renommer</button>
-          <button style={{ ...S.del, marginLeft: 6 }} onClick={() => onDelete(fav.id)}>×</button>
+
+          {editing && editing.id === fav.id && (
+            <div style={{ background: "#FAFBF8", borderRadius: 12, padding: 12, margin: "6px 0 12px" }}>
+              <div style={{ ...S.miniMuted, marginBottom: 6 }}>Ajuste les grammages, remplace ou supprime</div>
+              {editing.items.map((it, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.nom}</div>
+                  <input type="number" value={it.grams}
+                    onChange={(e) => setEditing((ed) => ({ ...ed, items: ed.items.map((x, i) => i === idx ? recalcItem(x, e.target.value) : x) }))}
+                    style={{ ...S.input, width: 70, padding: "6px 8px", margin: 0, textAlign: "right" }} />
+                  <span style={{ ...S.miniMuted, fontSize: 12 }}>g</span>
+                  <button style={S.del} onClick={() => setEditing((ed) => ({ ...ed, items: ed.items.filter((_, i) => i !== idx) }))}>×</button>
+                </div>
+              ))}
+
+              <input style={{ ...S.input, marginTop: 8 }} placeholder="Ajouter un aliment…"
+                value={editing.q} onChange={(e) => setEditing((ed) => ({ ...ed, q: e.target.value }))} />
+              {suggestions.length > 0 && (
+                <div style={{ marginTop: 6, background: "#fff", borderRadius: 10, padding: 4 }}>
+                  {suggestions.map((s) => (
+                    <button key={s.id} onClick={() => addItem(s)}
+                      style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", fontSize: 14, borderRadius: 8 }}>
+                      {s.nom} <span style={{ ...S.miniMuted, fontSize: 11 }}>· {s.kcal} kcal /100g</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={{ ...S.primaryBtn, marginTop: 0, flex: 1 }} onClick={save}>Enregistrer</button>
+                <button onClick={() => setEditing(null)}
+                  style={{ padding: "12px 16px", borderRadius: 12, border: "1px solid #E1E6DC", background: "#fff", color: C.ink, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+              </div>
+            </div>
+          )}
         </div>
       ))}
       <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 8 }}>
@@ -3028,6 +3127,7 @@ const SLIDES = [
   { ic: "👋", bg: "#EAF1EB", img: "accueil.png", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
   { ic: "▦", bg: "#EAF1EB", img: "agenda.png", t: "L'agenda", d: "Chaque jour : ta cible du jour, ce que tu as mangé, et ton sport. Touche « + » sur un repas (Déjeuner, Dîner…) pour y ajouter directement, ou « Ajouter sport »." },
   { ic: "＋", bg: "#EEE8F6", img: "ajouter.png", t: "Ajouter un repas", d: "Quatre façons : la liste officielle (valeurs vérifiées), le code-barres, l'estimation par photo (IA), ou la saisie libre — tu écris ton repas, l'app cherche d'abord dans la liste officielle et n'estime par IA que ce qui manque (bien signalé)." },
+  { ic: "📷", bg: "#EAF1EB", img: "scanner.png", t: "Scanne tes produits", d: "Scanne le code-barres d'un produit du supermarché : l'app va chercher ses valeurs nutritionnelles dans Open Food Facts (base collaborative, produits belges inclus) et te propose une fiche prête à valider. Une fois enregistré, le produit reste dans ta liste — tu ne rescannes plus jamais. Tu peux aussi scanner depuis l'onglet Liste pour construire ton catalogue perso." },
   { ic: "▤", bg: "#EAF5F6", img: "graphique.png", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois." },
   { ic: "◇", bg: "#FCF3E6", img: "profil.png", t: "Ton profil", d: "Ta cible se calcule selon ton activité quotidienne (métier) et ta fréquence de sport. Le sport te récompense par des résultats, pas par de la nourriture. Pèse-toi régulièrement : la balance est le juge." },
 ];
