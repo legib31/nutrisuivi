@@ -553,7 +553,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "1.7";
+const VERSION = "1.9";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1058,172 +1058,190 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
 
   const grid = useMemo(() => buildMonth(cursor.y, cursor.m), [cursor]);
 
-  return (
-    <div style={isDesktop
-      ? { display: "grid", gridTemplateColumns: "380px 1fr", gap: 20, alignItems: "start" }
-      : { display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Calendrier */}
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <button style={S.dateArrow} onClick={() => setCursor(shiftMonth(cursor, -1))}>‹</button>
-          <div style={{ fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif" }}>
-            {moisNom[cursor.m]} {cursor.y}
-          </div>
-          <button style={S.dateArrow} onClick={() => setCursor(shiftMonth(cursor, 1))}>›</button>
+  const calendrier = (
+    <div style={S.card}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <button style={S.dateArrow} onClick={() => setCursor(shiftMonth(cursor, -1))}>‹</button>
+        <div style={{ fontWeight: 700, fontFamily: "'Space Grotesk',sans-serif" }}>
+          {moisNom[cursor.m]} {cursor.y}
         </div>
-        <div style={S.calHead}>
-          {joursCal.map((j, i) => <div key={i} style={S.calHeadCell}>{j}</div>)}
-        </div>
-        <div style={S.calGrid}>
-          {grid.map((cell, i) => {
-            if (!cell) return <div key={i} />;
-            const items = diary[cell] || [];
-            const mealsPresent = REPAS.filter((r) => items.some((e) => e.repas === r.id));
-            const hasSport = ((sportAll[cell]) || []).length > 0;
-            const sel = cell === dateSel;
-            const tdy = cell === todayISO();
-            return (
-              <button key={i} onClick={() => setDateSel(cell)}
-                style={{ ...S.calCell, ...(sel ? S.calCellSel : {}), ...(tdy && !sel ? S.calCellToday : {}) }}>
-                <span style={{ fontSize: 14, fontWeight: sel ? 700 : 500 }}>{Number(cell.slice(-2))}</span>
-                <span style={{ display: "flex", gap: 2, minHeight: 5, alignItems: "center", justifyContent: "center", flexWrap: "wrap", maxWidth: 34 }}>
-                  {mealsPresent.map((r) => <span key={r.id} style={{ ...S.calDot, background: MEAL_COLORS[r.id] }} />)}
-                  {hasSport && <span style={{ ...S.calDot, background: SPORT_COLOR }} />}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
-          <Legend couleur={MEAL_COLORS.petitdej} txt="Déjeuner" />
-          <Legend couleur={MEAL_COLORS.collation} txt="Collation" />
-          <Legend couleur={MEAL_COLORS.midi} txt="Dîner" />
-          <Legend couleur={MEAL_COLORS.soir} txt="Souper" />
-          <Legend couleur={SPORT_COLOR} txt="Sport" />
-        </div>
+        <button style={S.dateArrow} onClick={() => setCursor(shiftMonth(cursor, 1))}>›</button>
       </div>
+      <div style={S.calHead}>
+        {joursCal.map((j, i) => <div key={i} style={S.calHeadCell}>{j}</div>)}
       </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Jour sélectionné */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
-        <div style={{ fontWeight: 800, fontSize: 17 }}>
-          {isToday ? "Aujourd'hui" : jolieDate(dateSel)}
-          {!isToday && <span style={S.miniMuted}> · {jolieDate(dateSel)}</span>}
-        </div>
-        {!isToday && <button style={S.linkBtn} onClick={() => setDateSel(todayISO())}>revenir à aujourd'hui</button>}
+      <div style={S.calGrid}>
+        {grid.map((cell, i) => {
+          if (!cell) return <div key={i} />;
+          const items = diary[cell] || [];
+          const mealsPresent = REPAS.filter((r) => items.some((e) => e.repas === r.id));
+          const hasSport = ((sportAll[cell]) || []).length > 0;
+          const sel = cell === dateSel;
+          const tdy = cell === todayISO();
+          return (
+            <button key={i} onClick={() => setDateSel(cell)}
+              style={{ ...S.calCell, ...(sel ? S.calCellSel : {}), ...(tdy && !sel ? S.calCellToday : {}) }}>
+              <span style={{ fontSize: 14, fontWeight: sel ? 700 : 500 }}>{Number(cell.slice(-2))}</span>
+              <span style={{ display: "flex", gap: 2, minHeight: 5, alignItems: "center", justifyContent: "center", flexWrap: "wrap", maxWidth: 34 }}>
+                {mealsPresent.map((r) => <span key={r.id} style={{ ...S.calDot, background: MEAL_COLORS[r.id] }} />)}
+                {hasSport && <span style={{ ...S.calDot, background: SPORT_COLOR }} />}
+              </span>
+            </button>
+          );
+        })}
       </div>
-
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <div><div style={S.bigNum}>{Math.round(tot.kcal)}</div><div style={S.miniMuted}>/ {cibleJour} kcal autorisées</div></div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ ...S.bigNum, color: reste >= 0 ? C.green : C.red }}>{reste >= 0 ? reste : `+${-reste}`}</div>
-            <div style={S.miniMuted}>{reste >= 0 ? "restantes" : "au-dessus"}</div>
-          </div>
-        </div>
-        <Barre value={tot.kcal} max={cibleJour} couleur={reste >= 0 ? C.green : C.red} />
-        {crediterSport && credited > 0 && (
-          <div style={{ ...S.miniMuted, marginTop: 6 }}>
-            {sportMode === "reparti"
-              ? `+${credited} kcal/jour lissés sur 7 jours — autorisé du jour : ${cibleJour}.`
-              : `+${credited} kcal crédités (${partSport ?? 60} % de ${Math.round(sportKcal)} dépensées) — autorisé du jour : ${cibleJour}.`}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <MacroPill label="Protéines" v={tot.p} cible={cibleProt} unit="g" couleur="#C0562B" />
-          <MacroPill label="Glucides" v={tot.c} cible={cibleGluc} unit="g" couleur="#E0912F" />
-          <MacroPill label="Lipides" v={tot.f} min={cibleLipMin} unit="g" couleur="#6B8F71" />
-        </div>
-        {(tot.fib > 0 || tot.suc > 0) && (
-          <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 8, display: "flex", gap: 16 }}>
-            <span>Fibres <b style={{ color: "#5B8A72" }}>{Math.round(tot.fib)} g</b></span>
-            <span>Sucres <b style={{ color: "#C0398C" }}>{Math.round(tot.suc)} g</b></span>
-          </div>
-        )}
+      <div style={{ display: "flex", gap: 10, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
+        <Legend couleur={MEAL_COLORS.petitdej} txt="Déjeuner" />
+        <Legend couleur={MEAL_COLORS.collation} txt="Collation" />
+        <Legend couleur={MEAL_COLORS.midi} txt="Dîner" />
+        <Legend couleur={MEAL_COLORS.soir} txt="Souper" />
+        <Legend couleur={SPORT_COLOR} txt="Sport" />
       </div>
+    </div>
+  );
 
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>💧 Hydratation</div>
-            <div style={S.miniMuted}>{water} / {waterGoal} verres · {(water * 0.25).toFixed(2).replace(".", ",")} L</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={() => onAddWater(-1)} style={{ width: 36, height: 36, borderRadius: 11, border: "1px solid #CFE0E3", background: "#fff", color: "#2C7A86", fontSize: 20, cursor: "pointer" }}>−</button>
-            <button onClick={() => onAddWater(1)} style={{ width: 36, height: 36, borderRadius: 11, border: "none", background: "#3E9CA8", color: "#fff", fontSize: 20, cursor: "pointer" }}>+</button>
-          </div>
+  const btnAjouterSport = (
+    <button style={{ ...S.addDayBtn, background: "#3E9CA8" }} onClick={onAddSport}>＋ Ajouter sport</button>
+  );
+
+  const cardSport = (
+    <div style={S.card}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: sportEntries.length ? 8 : 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 6, background: SPORT_COLOR, flexShrink: 0 }} />
+          <span style={{ fontWeight: 700 }}>Sport</span>
+          {sportKcal > 0 && <span style={S.miniMuted}> · {Math.round(sportKcal)} kcal ce jour</span>}
         </div>
-        <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
-          {Array.from({ length: Math.max(waterGoal, water) }).map((_, i) => (
-            <div key={i} style={{ flex: 1, height: 8, borderRadius: 4, background: i < water ? "#3E9CA8" : "#E1EAEB" }} />
-          ))}
-        </div>
+        <span style={{ ...S.miniMuted, fontWeight: 700, color: "#3E9CA8" }}>Semaine : {weekSport} kcal</span>
       </div>
-
-      <button style={{ ...S.addDayBtn, background: "#3E9CA8" }} onClick={onAddSport}>＋ Ajouter sport</button>
-      <button style={S.copyBtn} onClick={onDuplicatePrev}>⧉ Copier les repas de la veille</button>
-
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: sportEntries.length ? 8 : 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 6, background: SPORT_COLOR, flexShrink: 0 }} />
-            <span style={{ fontWeight: 700 }}>Sport</span>
-            {sportKcal > 0 && <span style={S.miniMuted}> · {Math.round(sportKcal)} kcal ce jour</span>}
+      {sportEntries.map((e) => (
+        <div key={e.id} style={S.entryRow}>
+          {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
+            <div style={S.miniMuted}>{e.minutes} min · {Math.round(e.kcal)} kcal</div>
           </div>
-          <span style={{ ...S.miniMuted, fontWeight: 700, color: "#3E9CA8" }}>Semaine : {weekSport} kcal</span>
-        </div>
-        {sportEntries.map((e) => (
-          <div key={e.id} style={S.entryRow}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
-              <div style={S.miniMuted}>{e.minutes} min · {Math.round(e.kcal)} kcal</div>
-            </div>
-            <button style={S.del} onClick={() => onDelSport(e.id)}>×</button>
-          </div>
-        ))}
-        {!sportEntries.length && <div style={{ ...S.miniMuted, fontSize: 13 }}>Aucune activité ce jour.</div>}
-      </div>
-
-      <div style={{ ...S.card, background: "#EAF5F6" }}>
-        <div style={{ fontWeight: 700, color: "#2C7A86" }}>Ta semaine sport</div>
-        <div style={{ ...S.miniMuted, marginTop: 8, lineHeight: 1.5 }}>
-          Ton sport a creusé <b style={{ color: "#2C7A86" }}>{motivation.kcal} kcal</b> de déficit cette semaine, soit ≈ <b>{motivation.gFat} g de gras</b>. Ta récompense, c'est ça : des résultats plus rapides et ton muscle préservé — pas une assiette en plus.
-        </div>
-      </div>
-
-      {parRepas.map((r) => (
-        <div key={r.id} style={S.card}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: r.items.length ? 8 : 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ width: 11, height: 11, borderRadius: 6, background: MEAL_COLORS[r.id], flexShrink: 0 }} />
-              <span style={{ fontWeight: 700 }}>{r.label}</span><span style={S.miniMuted}> · {r.h}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Enregistrer</button>}
-              <span style={{ ...S.miniMuted, fontWeight: 700 }}>{Math.round(sommeMacros(r.items).kcal)} kcal</span>
-              <MealPhoto compact photo={(mealPhotos[dateSel] || {})[r.id]}
-                onSet={(u) => onMealPhoto(dateSel, r.id, u)} onClear={() => onClearMealPhoto(dateSel, r.id)} />
-            </div>
-          </div>
-          {r.items.map((e) => (
-            <div key={e.id} style={S.entryRow}>
-              {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
-              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
-                <div style={S.miniMuted}>{e.grams} g · {Math.round(e.kcal)} kcal · <span style={{ color: C.green }}>modifier</span></div>
-              </div>
-              <button style={S.del} onClick={() => onDel(e.id)}>×</button>
-            </div>
-          ))}
-          <button onClick={() => onAdd(r.id)}
-            style={{ width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 12, border: "none", background: MEAL_COLORS[r.id], color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-            ＋ Ajouter à {r.label}
-          </button>
+          <button style={S.del} onClick={() => onDelSport(e.id)}>×</button>
         </div>
       ))}
+      {!sportEntries.length && <div style={{ ...S.miniMuted, fontSize: 13 }}>Aucune activité ce jour.</div>}
+    </div>
+  );
+
+  const cardSemaineSport = (
+    <div style={{ ...S.card, background: "#EAF5F6" }}>
+      <div style={{ fontWeight: 700, color: "#2C7A86" }}>Ta semaine sport</div>
+      <div style={{ ...S.miniMuted, marginTop: 8, lineHeight: 1.5 }}>
+        Ton sport a creusé <b style={{ color: "#2C7A86" }}>{motivation.kcal} kcal</b> de déficit cette semaine, soit ≈ <b>{motivation.gFat} g de gras</b>. Ta récompense, c'est ça : des résultats plus rapides et ton muscle préservé — pas une assiette en plus.
       </div>
+    </div>
+  );
+
+  const headerJour = (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
+      <div style={{ fontWeight: 800, fontSize: 17 }}>
+        {isToday ? "Aujourd'hui" : jolieDate(dateSel)}
+        {!isToday && <span style={S.miniMuted}> · {jolieDate(dateSel)}</span>}
+      </div>
+      {!isToday && <button style={S.linkBtn} onClick={() => setDateSel(todayISO())}>revenir à aujourd'hui</button>}
+    </div>
+  );
+
+  const cardKcal = (
+    <div style={S.card}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div><div style={S.bigNum}>{Math.round(tot.kcal)}</div><div style={S.miniMuted}>/ {cibleJour} kcal autorisées</div></div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ ...S.bigNum, color: reste >= 0 ? C.green : C.red }}>{reste >= 0 ? reste : `+${-reste}`}</div>
+          <div style={S.miniMuted}>{reste >= 0 ? "restantes" : "au-dessus"}</div>
+        </div>
+      </div>
+      <Barre value={tot.kcal} max={cibleJour} couleur={reste >= 0 ? C.green : C.red} />
+      {crediterSport && credited > 0 && (
+        <div style={{ ...S.miniMuted, marginTop: 6 }}>
+          {sportMode === "reparti"
+            ? `+${credited} kcal/jour lissés sur 7 jours — autorisé du jour : ${cibleJour}.`
+            : `+${credited} kcal crédités (${partSport ?? 60} % de ${Math.round(sportKcal)} dépensées) — autorisé du jour : ${cibleJour}.`}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <MacroPill label="Protéines" v={tot.p} cible={cibleProt} unit="g" couleur="#C0562B" />
+        <MacroPill label="Glucides" v={tot.c} cible={cibleGluc} unit="g" couleur="#E0912F" />
+        <MacroPill label="Lipides" v={tot.f} min={cibleLipMin} unit="g" couleur="#6B8F71" />
+      </div>
+      {(tot.fib > 0 || tot.suc > 0) && (
+        <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 8, display: "flex", gap: 16 }}>
+          <span>Fibres <b style={{ color: "#5B8A72" }}>{Math.round(tot.fib)} g</b></span>
+          <span>Sucres <b style={{ color: "#C0398C" }}>{Math.round(tot.suc)} g</b></span>
+        </div>
+      )}
+    </div>
+  );
+
+  const btnCopier = (
+    <button style={S.copyBtn} onClick={onDuplicatePrev}>⧉ Copier les repas de la veille</button>
+  );
+
+  const cartesRepas = parRepas.map((r) => (
+    <div key={r.id} style={{ ...S.card, borderLeft: `5px solid ${MEAL_COLORS[r.id]}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: r.items.length ? 8 : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 6, background: MEAL_COLORS[r.id], flexShrink: 0 }} />
+          <span style={{ fontWeight: 700 }}>{r.label}</span><span style={S.miniMuted}> · {r.h}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Enregistrer</button>}
+          <span style={{ ...S.miniMuted, fontWeight: 700 }}>{Math.round(sommeMacros(r.items).kcal)} kcal</span>
+        </div>
+      </div>
+      {r.items.map((e) => (
+        <div key={e.id} style={S.entryRow}>
+          {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
+          <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
+            <div style={S.miniMuted}>{e.grams} g · {Math.round(e.kcal)} kcal · <span style={{ color: C.green }}>modifier</span></div>
+          </div>
+          <button style={S.del} onClick={() => onDel(e.id)}>×</button>
+        </div>
+      ))}
+      <button onClick={() => onAdd(r.id)}
+        style={{ width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 12, border: "none", background: MEAL_COLORS[r.id], color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+        ＋ Ajouter à {r.label}
+      </button>
+    </div>
+  ));
+
+  if (isDesktop) {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 20, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {calendrier}
+          {btnAjouterSport}
+          {cardSport}
+          {cardSemaineSport}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {headerJour}
+          {cardKcal}
+          {btnCopier}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            {cartesRepas}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {calendrier}
+      {headerJour}
+      {cardKcal}
+      {btnAjouterSport}
+      {btnCopier}
+      {cardSport}
+      {cardSemaineSport}
+      {cartesRepas}
     </div>
   );
 }
@@ -1936,14 +1954,35 @@ function SportSheet({ sports, poids, date, onClose, onAdd, onCreate }) {
   const [min, setMin] = useState(60);
   const [creating, setCreating] = useState(false);
   const [nf, setNf] = useState({});
+  const [override, setOverride] = useState("");
+  const [photo, setPhoto] = useState(null);
+  const photoRef = useRef();
 
   const liste = sports.filter((s) => norm(s.nom).includes(norm(q)));
   const kcalH = sel ? (sel.kcalH != null ? sel.kcalH : kcalPerH(sel.met, poids)) : 0;
-  const kcal = Math.round((kcalH * min) / 60);
+  const kcalAuto = Math.round((kcalH * min) / 60);
+  const kcal = override !== "" ? Math.max(0, Math.round(Number(override) || 0)) : kcalAuto;
+
+  function onPhoto(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 520, scale = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = img.width * scale; cv.height = img.height * scale;
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        setPhoto(cv.toDataURL("image/jpeg", 0.6));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
 
   function valider() {
     if (!sel) return;
-    onAdd({ id: uid(), sportId: sel.id, nom: sel.nom, minutes: Number(min), kcal });
+    onAdd({ id: uid(), sportId: sel.id, nom: sel.nom, minutes: Number(min), kcal, photo });
     onClose();
   }
   function startCreate() { setNf({ nom: q }); setCreating(true); }
@@ -2005,7 +2044,48 @@ function SportSheet({ sports, poids, date, onClose, onAdd, onCreate }) {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#EAF5F6", borderRadius: 12, padding: "12px 14px", marginTop: 12 }}>
               <span><b style={{ fontSize: 22, color: C.ink }}>{kcal}</b> kcal dépensées</span>
+              <span style={{ ...S.miniMuted, fontSize: 11 }}>{override !== "" ? "valeur manuelle" : "estimé"}</span>
             </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={S.sectionLabel}>Corriger les kcal (optionnel)</div>
+              <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 6 }}>
+                Si ta montre / Strava t'indique une valeur plus précise, remplace ici.
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="number" placeholder={`estimé ${kcalAuto}`} value={override}
+                  onChange={(e) => setOverride(e.target.value)}
+                  style={{ ...S.input, flex: 1 }} />
+                <span style={{ fontWeight: 700 }}>kcal</span>
+                {override !== "" && (
+                  <button onClick={() => setOverride("")}
+                    style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #E1E6DC", background: "#fff", cursor: "pointer", fontSize: 12 }}>×</button>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={S.sectionLabel}>Preuve / capture (optionnel)</div>
+              <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 6 }}>
+                Attache une capture de ta séance (Strava, montre) pour la garder en mémoire.
+              </div>
+              {photo ? (
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <img src={photo} alt="" style={{ maxWidth: 160, maxHeight: 160, borderRadius: 10, display: "block" }} />
+                  <button onClick={() => setPhoto(null)}
+                    style={{ position: "absolute", top: -6, right: -6, width: 24, height: 24, borderRadius: 12, border: "none", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.2)", cursor: "pointer" }}>×</button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={() => photoRef.current && photoRef.current.click()}
+                    style={{ padding: "10px 14px", borderRadius: 10, border: "1px dashed #A9CBD1", background: "#F5FAFB", color: "#2C7A86", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    📷 Ajouter une capture
+                  </button>
+                  <input ref={photoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPhoto} />
+                </>
+              )}
+            </div>
+
             <button style={{ ...S.primaryBtn, background: "#3E9CA8" }} onClick={valider}>Enregistrer l'activité</button>
           </div>
         )}
@@ -2554,11 +2634,16 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
           {metric === "calories"
             ? `Moyenne ${moy || 0} kcal · cible ${cible}`
             : metric === "net"
-            ? `Mangé − dépensé · cible ${cible}`
+            ? `Kcal mangées − kcal brûlées par le sport · cible ${cible}`
             : metric === "sport"
             ? `Déficit creusé par le sport · total ${sportTotal} kcal ≈ ${Math.round(sportTotal / 7.7)} g de gras`
             : `Objectif ${objectif} kg`}
         </div>
+        {metric === "net" && (
+          <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 8, background: "#EAF5F6", borderRadius: 8, padding: "6px 10px", lineHeight: 1.5, color: "#2C7A86" }}>
+            <b>Net = ce que tu as réellement absorbé.</b> Si tu manges 2 200 kcal mais dépenses 400 kcal en sport, ton net est 1 800. C'est ce chiffre qui compte face à ta cible quand tu logges tes séances.
+          </div>
+        )}
 
         <div style={{ height: 250 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -2745,6 +2830,8 @@ function poidsDataFn(log, gran, span) {
 /* ============================= PROFIL =========================== */
 function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLog, setPoidsLog, onExport, onExportCSV, onImport, onReset, onReplayTutorial }) {
   const [nouveau, setNouveau] = useState(profil.poids);
+  const sortedLog = [...(poidsLog || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const [departEdit, setDepartEdit] = useState(sortedLog[0] ? String(sortedLog[0].poids) : "");
   const set = (k) => (v) => setProfil((p) => ({ ...p, [k]: v }));
   const rappels = profil.rappels || DEFAULT_RAPPELS;
   const rr = profil.rappelRepas || { on: true, h: 21, m: 30 };
@@ -2768,8 +2855,17 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
     setPoidsLog((log) => [...log.filter((e) => e.date !== d), { date: d, poids: val }].sort((a, b) => a.date.localeCompare(b.date)));
     setProfil((p) => ({ ...p, poids: val }));
   }
-  const dernier = poidsLog[poidsLog.length - 1];
-  const depart = poidsLog[0];
+  function enregistrerDepart() {
+    const val = Number(departEdit); if (!val) return;
+    setPoidsLog((log) => {
+      const sorted = [...log].sort((a, b) => a.date.localeCompare(b.date));
+      if (!sorted.length) return [{ date: todayISO(), poids: val }];
+      sorted[0] = { ...sorted[0], poids: val };
+      return sorted;
+    });
+  }
+  const dernier = sortedLog[sortedLog.length - 1];
+  const depart = sortedLog[0];
   const perdu = depart && dernier ? (depart.poids - dernier.poids).toFixed(1) : 0;
 
   function toggleCredit() {
@@ -2792,7 +2888,8 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Mon poids aujourd'hui</div>
+        <div style={S.sectionLabel}>Mon poids actuel</div>
+        <div style={{ ...S.miniMuted, marginBottom: 8, fontSize: 12 }}>Sert au calcul de ta cible calorique. Pèse-toi régulièrement.</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="number" step="0.1" value={nouveau} onChange={(e) => setNouveau(e.target.value)} style={{ ...S.input, flex: 1 }} />
           <span style={{ fontWeight: 700 }}>kg</span>
@@ -2800,9 +2897,19 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
         </div>
         {depart && (
           <div style={{ ...S.miniMuted, marginTop: 10 }}>
-            Depuis le début : <b style={{ color: perdu > 0 ? C.green : C.ink }}>{perdu > 0 ? `−${perdu}` : perdu} kg</b> · départ {depart.poids} kg
+            Depuis le début : <b style={{ color: perdu > 0 ? C.green : C.ink }}>{perdu > 0 ? `−${perdu}` : perdu} kg</b> · départ {depart.poids} kg le {depart.date.split("-").reverse().join("/")}
           </div>
         )}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.sectionLabel}>Poids de départ</div>
+        <div style={{ ...S.miniMuted, marginBottom: 8, fontSize: 12 }}>Modifie-le si tu t'es trompé au premier enregistrement. Ça n'affecte pas ta cible (calculée sur le poids actuel), juste l'affichage « depuis le début ».</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="number" step="0.1" value={departEdit} onChange={(e) => setDepartEdit(e.target.value)} style={{ ...S.input, flex: 1 }} />
+          <span style={{ fontWeight: 700 }}>kg</span>
+          <button style={{ padding: "12px 16px", borderRadius: 12, border: "1px solid #E1E6DC", background: "#fff", color: C.ink, fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={enregistrerDepart}>Corriger</button>
+        </div>
       </div>
 
       <div style={S.card}>
