@@ -2,7 +2,7 @@
 // À copier dans le dépôt GitHub `nutrisuivi/` à côté d'index.html.
 // Le numéro de cache change à chaque build ; le SW s'active immédiatement (skipWaiting).
 
-const CACHE = "nutrisuivi-v1.9";
+const CACHE = "nutrisuivi-v2.1";
 const CORE = ["./", "./index.html", "./app.bundle.js", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

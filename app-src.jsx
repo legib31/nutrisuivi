@@ -553,7 +553,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "1.9";
+const VERSION = "2.1";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -916,48 +916,49 @@ export default function App() {
 
   if (!loaded) return <Splash />;
 
-  return (
-    <div style={{ minHeight: "100vh", background: isDesktop ? "#E7EBE2" : C.bg, color: C.ink, fontFamily: "'Inter',system-ui,sans-serif" }}>
-      <StyleInject />
-      <div style={isDesktop
-        ? { maxWidth: 1160, margin: "0 auto", display: "grid", gridTemplateColumns: "240px 1fr", gap: 24, padding: 24, minHeight: "100vh", boxSizing: "border-box", alignItems: "start" }
-        : {}}>
-        {isDesktop && (
-          <aside style={{ position: "sticky", top: 24, background: C.card, border: "2px solid #E0E6DA", borderRadius: 20, padding: 20, display: "flex", flexDirection: "column", gap: 6, minHeight: "calc(100vh - 48px)", boxSizing: "border-box" }}>
-            <div style={{ marginBottom: 18 }}>
-              <div style={S.logo}>Nutri<span style={{ color: C.amber }}>Suivi</span></div>
-              <div style={S.sub}>Objectif {profil.objectif} kg · {cible} kcal/j</div>
-            </div>
-            {[["agenda", "Agenda", "▦"], ["semaine", "Semaine", "▥"], ["liste", "Liste", "☰"], ["graphique", "Graphique", "▤"], ["profil", "Profil", "◇"]].map(([id, label, ic]) => (
-              <button key={id} onClick={() => setTab(id)}
-                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: tab === id ? C.greenPale : "transparent", color: tab === id ? C.green : C.ink, fontWeight: tab === id ? 700 : 500, fontSize: 15, textAlign: "left" }}>
-                <span style={{ fontSize: 18, width: 20, textAlign: "center" }}>{ic}</span>{label}
-              </button>
-            ))}
-            <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", justifyContent: "center" }}>
-              <RingSmall value={sommeMacros(diary[todayISO()]).kcal}
-                max={cible + (profil.crediterSport ? creditedKcal(todayISO(), sport, profil.partSport ?? 60, profil.sportMode ?? "jour") : 0)} />
-            </div>
-          </aside>
-        )}
+  const todayLong = new Date().toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dateHeader = todayLong.charAt(0).toUpperCase() + todayLong.slice(1);
 
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Archivo', system-ui, sans-serif" }}>
+      <StyleInject />
+
+      {isDesktop && (
+        <header style={{ background: C.bg, borderBottom: `2px solid ${C.divider}`, position: "sticky", top: 0, zIndex: 5 }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 40px", display: "flex", alignItems: "center", gap: 40 }}>
+            <div style={{ ...S.logo, fontSize: 20 }}>NutriSuivi</div>
+            <nav style={{ display: "flex", gap: 4, flex: 1 }}>
+              {[["agenda", "Agenda"], ["semaine", "Semaine"], ["liste", "Liste"], ["graphique", "Graphique"], ["profil", "Profil"]].map(([id, label]) => (
+                <button key={id} onClick={() => setTab(id)}
+                  style={{ background: "none", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 14, fontWeight: tab === id ? 700 : 500, color: tab === id ? C.accent : C.ink, borderBottom: tab === id ? `2px solid ${C.accent}` : "2px solid transparent", marginBottom: -2 }}>
+                  {label}
+                </button>
+              ))}
+            </nav>
+            <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>
+              {dateHeader} · Objectif {profil.objectif} kg
+            </div>
+          </div>
+        </header>
+      )}
+
+      <div style={isDesktop ? { maxWidth: 1200, margin: "0 auto", padding: "0 40px", boxSizing: "border-box" } : {}}>
         <div style={{ minWidth: 0, maxWidth: isDesktop ? "none" : 480, margin: isDesktop ? 0 : "0 auto", width: "100%" }}>
           {!isDesktop && (
             <header style={S.header}>
               <div>
-                <div style={S.logo}>Nutri<span style={{ color: C.amber }}>Suivi</span></div>
+                <div style={S.logo}>NutriSuivi</div>
                 <div style={S.sub}>Objectif {profil.objectif} kg · {cible} kcal/jour</div>
               </div>
-              <RingSmall value={sommeMacros(diary[todayISO()]).kcal}
-                max={cible + (profil.crediterSport ? creditedKcal(todayISO(), sport, profil.partSport ?? 60, profil.sportMode ?? "jour") : 0)} />
             </header>
           )}
 
-          <main style={{ ...S.main, padding: isDesktop ? "0 0 24px" : "4px 14px 96px" }}>
+          <main style={{ ...S.main, padding: isDesktop ? "0 0 40px" : "4px 14px 96px" }}>
         {tab === "agenda" && (
           <Agenda diary={diary} dateSel={dateSel} setDateSel={setDateSel}
             tot={totJour} cible={cible} cibleProt={cibleProt} cibleGluc={cibleGluc} cibleLipMin={cibleLipMin}
             onDel={delEntry} onAdd={(rid) => { if (rid) setAddRepas(rid); setAddOpen(true); }}
+            onEditGrams={editEntry}
             mealPhotos={mealPhotos} onMealPhoto={setMealPhoto} onClearMealPhoto={clearMealPhoto}
             sportAll={sport} sportEntries={sport[dateSel] || []} onAddSport={() => setSportOpen(true)}
             onDelSport={delSport} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
@@ -1033,7 +1034,7 @@ export default function App() {
 }
 
 /* ============================ AGENDA ============================= */
-function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
+function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(dateSel); return { y: d.getFullYear(), m: d.getMonth() }; });
   const sportKcal = sommeSport(sportEntries);
   const credited = crediterSport ? creditedKcal(dateSel, sportAll, partSport, sportMode) : 0;
@@ -1072,9 +1073,9 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
       </div>
       <div style={S.calGrid}>
         {grid.map((cell, i) => {
-          if (!cell) return <div key={i} />;
+          if (!cell) return <div key={i} style={{ background: "#fff", border: `1px solid ${C.divider}`, aspectRatio: "1", margin: -0.5 }} />;
           const items = diary[cell] || [];
-          const mealsPresent = REPAS.filter((r) => items.some((e) => e.repas === r.id));
+          const hasMeal = items.length > 0;
           const hasSport = ((sportAll[cell]) || []).length > 0;
           const sel = cell === dateSel;
           const tdy = cell === todayISO();
@@ -1082,167 +1083,238 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
             <button key={i} onClick={() => setDateSel(cell)}
               style={{ ...S.calCell, ...(sel ? S.calCellSel : {}), ...(tdy && !sel ? S.calCellToday : {}) }}>
               <span style={{ fontSize: 14, fontWeight: sel ? 700 : 500 }}>{Number(cell.slice(-2))}</span>
-              <span style={{ display: "flex", gap: 2, minHeight: 5, alignItems: "center", justifyContent: "center", flexWrap: "wrap", maxWidth: 34 }}>
-                {mealsPresent.map((r) => <span key={r.id} style={{ ...S.calDot, background: MEAL_COLORS[r.id] }} />)}
-                {hasSport && <span style={{ ...S.calDot, background: SPORT_COLOR }} />}
+              <span style={{ display: "flex", gap: 2, minHeight: 5, alignItems: "center", justifyContent: "center" }}>
+                {hasMeal && <span style={{ ...S.calDot, background: sel ? "#fff" : C.accent }} />}
+                {hasSport && <span style={{ ...S.calDot, background: sel ? "#fff" : C.accentDark, opacity: sel ? 0.6 : 1 }} />}
               </span>
             </button>
           );
         })}
       </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
-        <Legend couleur={MEAL_COLORS.petitdej} txt="Déjeuner" />
-        <Legend couleur={MEAL_COLORS.collation} txt="Collation" />
-        <Legend couleur={MEAL_COLORS.midi} txt="Dîner" />
-        <Legend couleur={MEAL_COLORS.soir} txt="Souper" />
-        <Legend couleur={SPORT_COLOR} txt="Sport" />
-      </div>
     </div>
   );
 
-  const btnAjouterSport = (
-    <button style={{ ...S.addDayBtn, background: "#3E9CA8" }} onClick={onAddSport}>＋ Ajouter sport</button>
-  );
+  /* --- Bloc résumé "Aujourd'hui" (col gauche desktop, en tête mobile) --- */
+  const pct = Math.min(100, Math.round((tot.kcal / cibleJour) * 100));
+  const kcalConsommees = Math.round(tot.kcal);
+  const kcalRestantes = reste;
 
-  const cardSport = (
-    <div style={S.card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: sportEntries.length ? 8 : 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ width: 11, height: 11, borderRadius: 6, background: SPORT_COLOR, flexShrink: 0 }} />
-          <span style={{ fontWeight: 700 }}>Sport</span>
-          {sportKcal > 0 && <span style={S.miniMuted}> · {Math.round(sportKcal)} kcal ce jour</span>}
+  const Macro = ({ label, v, cible, min, unit }) => {
+    const val = Math.round(v);
+    const cap = cible || (min ? min * 2 : 100);
+    const p = Math.min(100, (val / cap) * 100);
+    return (
+      <div style={{ flex: 1 }}>
+        <div style={{ ...S.sectionLabel, fontSize: 10, marginBottom: 6 }}>{label}</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: C.ink, letterSpacing: "-0.02em", lineHeight: 1 }}>
+          {val}<span style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginLeft: 3 }}>{unit}</span>
         </div>
-        <span style={{ ...S.miniMuted, fontWeight: 700, color: "#3E9CA8" }}>Semaine : {weekSport} kcal</span>
-      </div>
-      {sportEntries.map((e) => (
-        <div key={e.id} style={S.entryRow}>
-          {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
-            <div style={S.miniMuted}>{e.minutes} min · {Math.round(e.kcal)} kcal</div>
-          </div>
-          <button style={S.del} onClick={() => onDelSport(e.id)}>×</button>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{cible ? `sur ${cible}${unit}` : `min ${min}${unit}`}</div>
+        <div style={{ height: 4, background: C.divider, marginTop: 6 }}>
+          <div style={{ width: `${p}%`, height: "100%", background: C.accent }} />
         </div>
-      ))}
-      {!sportEntries.length && <div style={{ ...S.miniMuted, fontSize: 13 }}>Aucune activité ce jour.</div>}
-    </div>
-  );
-
-  const cardSemaineSport = (
-    <div style={{ ...S.card, background: "#EAF5F6" }}>
-      <div style={{ fontWeight: 700, color: "#2C7A86" }}>Ta semaine sport</div>
-      <div style={{ ...S.miniMuted, marginTop: 8, lineHeight: 1.5 }}>
-        Ton sport a creusé <b style={{ color: "#2C7A86" }}>{motivation.kcal} kcal</b> de déficit cette semaine, soit ≈ <b>{motivation.gFat} g de gras</b>. Ta récompense, c'est ça : des résultats plus rapides et ton muscle préservé — pas une assiette en plus.
       </div>
-    </div>
-  );
+    );
+  };
 
-  const headerJour = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 4px" }}>
-      <div style={{ fontWeight: 800, fontSize: 17 }}>
-        {isToday ? "Aujourd'hui" : jolieDate(dateSel)}
-        {!isToday && <span style={S.miniMuted}> · {jolieDate(dateSel)}</span>}
-      </div>
-      {!isToday && <button style={S.linkBtn} onClick={() => setDateSel(todayISO())}>revenir à aujourd'hui</button>}
-    </div>
-  );
-
-  const cardKcal = (
-    <div style={S.card}>
+  const panneauResume = (
+    <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div><div style={S.bigNum}>{Math.round(tot.kcal)}</div><div style={S.miniMuted}>/ {cibleJour} kcal autorisées</div></div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ ...S.bigNum, color: reste >= 0 ? C.green : C.red }}>{reste >= 0 ? reste : `+${-reste}`}</div>
-          <div style={S.miniMuted}>{reste >= 0 ? "restantes" : "au-dessus"}</div>
-        </div>
+        <div style={S.kicker}>{isToday ? "AUJOURD'HUI" : jolieDate(dateSel).toUpperCase()}</div>
+        {!isToday && <button style={S.linkBtn} onClick={() => setDateSel(todayISO())}>Aujourd'hui</button>}
       </div>
-      <Barre value={tot.kcal} max={cibleJour} couleur={reste >= 0 ? C.green : C.red} />
+      <div style={S.kickerTrait} />
+
+      <div style={{ ...S.bigNum, fontSize: isDesktop ? 112 : 72, color: C.accent }}>
+        {kcalRestantes >= 0 ? kcalRestantes : `+${-kcalRestantes}`}
+      </div>
+      <div style={{ ...S.miniMuted, marginTop: 8, fontSize: 13 }}>
+        {kcalRestantes >= 0 ? "kcal restantes" : "kcal au-dessus"} · {kcalConsommees} sur {cibleJour} kcal consommées · {pct} %
+      </div>
+
+      <div style={{ height: 8, background: C.divider, marginTop: 22 }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: kcalRestantes >= 0 ? C.accent : C.negative }} />
+      </div>
+
       {crediterSport && credited > 0 && (
-        <div style={{ ...S.miniMuted, marginTop: 6 }}>
+        <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
           {sportMode === "reparti"
-            ? `+${credited} kcal/jour lissés sur 7 jours — autorisé du jour : ${cibleJour}.`
-            : `+${credited} kcal crédités (${partSport ?? 60} % de ${Math.round(sportKcal)} dépensées) — autorisé du jour : ${cibleJour}.`}
+            ? `+${credited} kcal/jour lissés sur 7 jours (sport crédité).`
+            : `+${credited} kcal crédités du sport (${partSport ?? 60} % de ${Math.round(sportKcal)} dépensées).`}
         </div>
       )}
-      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-        <MacroPill label="Protéines" v={tot.p} cible={cibleProt} unit="g" couleur="#C0562B" />
-        <MacroPill label="Glucides" v={tot.c} cible={cibleGluc} unit="g" couleur="#E0912F" />
-        <MacroPill label="Lipides" v={tot.f} min={cibleLipMin} unit="g" couleur="#6B8F71" />
+
+      <div style={{ display: "flex", gap: 24, marginTop: 32, paddingTop: 22, borderTop: `2px solid ${C.divider}` }}>
+        <Macro label="Protéines" v={tot.p} cible={cibleProt} unit="g" />
+        <Macro label="Glucides" v={tot.c} cible={cibleGluc} unit="g" />
+        <Macro label="Lipides" v={tot.f} min={cibleLipMin} unit="g" />
       </div>
+
       {(tot.fib > 0 || tot.suc > 0) && (
-        <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 8, display: "flex", gap: 16 }}>
-          <span>Fibres <b style={{ color: "#5B8A72" }}>{Math.round(tot.fib)} g</b></span>
-          <span>Sucres <b style={{ color: "#C0398C" }}>{Math.round(tot.suc)} g</b></span>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 16, display: "flex", gap: 24 }}>
+          <span>FIBRES <b style={{ color: C.ink, marginLeft: 4 }}>{Math.round(tot.fib)} g</b></span>
+          <span>SUCRES <b style={{ color: C.ink, marginLeft: 4 }}>{Math.round(tot.suc)} g</b></span>
         </div>
       )}
     </div>
   );
 
-  const btnCopier = (
-    <button style={S.copyBtn} onClick={onDuplicatePrev}>⧉ Copier les repas de la veille</button>
+  /* --- Ligne d'aliment avec [-] qté kcal [+] [×] --- */
+  const QtyBtn = ({ children, onClick, title }) => (
+    <button onClick={onClick} title={title}
+      style={{ width: 30, height: 30, border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", color: C.ink, fontSize: 16, display: "grid", placeItems: "center", padding: 0, borderRadius: 0 }}>
+      {children}
+    </button>
   );
 
-  const cartesRepas = parRepas.map((r) => (
-    <div key={r.id} style={{ ...S.card, borderLeft: `5px solid ${MEAL_COLORS[r.id]}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: r.items.length ? 8 : 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ width: 11, height: 11, borderRadius: 6, background: MEAL_COLORS[r.id], flexShrink: 0 }} />
-          <span style={{ fontWeight: 700 }}>{r.label}</span><span style={S.miniMuted}> · {r.h}</span>
+  function bump(e, delta) {
+    const g = Math.max(1, (Number(e.grams) || 0) + delta);
+    if (onEditGrams) onEditGrams(e.id, g);
+  }
+
+  /* --- Blocs repas nouveau format --- */
+  const blocRepas = parRepas.map((r, idx) => (
+    <div key={r.id} style={{ paddingTop: idx === 0 ? 0 : 22, borderTop: idx === 0 ? "none" : `2px solid ${C.divider}`, marginTop: idx === 0 ? 0 : 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ width: 9, height: 9, background: C.accent, flexShrink: 0 }} />
+          <span style={{ fontSize: 19, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{r.label}</span>
+          <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>{r.h}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Enregistrer</button>}
-          <span style={{ ...S.miniMuted, fontWeight: 700 }}>{Math.round(sommeMacros(r.items).kcal)} kcal</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Favori</button>}
+          <span style={{ fontSize: 18, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{Math.round(sommeMacros(r.items).kcal)} kcal</span>
         </div>
       </div>
-      {r.items.map((e) => (
-        <div key={e.id} style={S.entryRow}>
-          {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
-          <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{e.nom}</div>
-            <div style={S.miniMuted}>{e.grams} g · {Math.round(e.kcal)} kcal · <span style={{ color: C.green }}>modifier</span></div>
+
+      {r.items.length === 0 ? (
+        <div style={{ fontSize: 13, color: C.muted, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>À compléter.</div>
+      ) : (
+        r.items.map((e) => (
+          <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>
+            {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
+            <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
+              <div style={{ fontWeight: 600, fontSize: 14, color: C.ink }}>{e.nom}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <QtyBtn onClick={() => bump(e, -10)} title="−10 g">−</QtyBtn>
+              <InlineGrams entry={e} onSave={onEditGrams} />
+              <QtyBtn onClick={() => bump(e, +10)} title="+10 g">+</QtyBtn>
+              <button onClick={() => onDel(e.id)} title="Supprimer"
+                style={{ ...S.del, marginLeft: 4 }}>×</button>
+            </div>
           </div>
-          <button style={S.del} onClick={() => onDel(e.id)}>×</button>
-        </div>
-      ))}
+        ))
+      )}
+
       <button onClick={() => onAdd(r.id)}
-        style={{ width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 12, border: "none", background: MEAL_COLORS[r.id], color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-        ＋ Ajouter à {r.label}
+        style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
+        + Ajouter à {r.label}
       </button>
     </div>
   ));
 
+  const blocSport = (
+    <div style={{ paddingTop: 22, borderTop: `2px solid ${C.divider}`, marginTop: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ width: 9, height: 9, background: C.accentDark, flexShrink: 0 }} />
+          <span style={{ fontSize: 19, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>Sport</span>
+          <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>Semaine {weekSport} kcal</span>
+        </div>
+        <span style={{ fontSize: 18, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{Math.round(sportKcal)} kcal</span>
+      </div>
+
+      {sportEntries.length === 0 ? (
+        <div style={{ fontSize: 13, color: C.muted, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>Aucune activité ce jour.</div>
+      ) : (
+        sportEntries.map((e) => (
+          <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>
+            {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
+            <div style={{ flex: 1, fontWeight: 600, fontSize: 14, color: C.ink }}>{e.nom}</div>
+            <span style={{ fontSize: 12, color: C.muted, minWidth: 130, textAlign: "right" }}>{e.minutes} min · {Math.round(e.kcal)} kcal</span>
+            <button style={{ ...S.del, marginLeft: 8 }} onClick={() => onDelSport(e.id)}>×</button>
+          </div>
+        ))
+      )}
+
+      <button onClick={onAddSport}
+        style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
+        + Ajouter du sport
+      </button>
+    </div>
+  );
+
+  const panneauRepas = (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: C.ink }}>Repas du jour</div>
+        <button onClick={onDuplicatePrev} style={S.linkBtn}>⧉ Copier la veille</button>
+      </div>
+      <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 22 }}>
+        {blocRepas}
+        {blocSport}
+      </div>
+    </div>
+  );
+
   if (isDesktop) {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 20, alignItems: "start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {calendrier}
-          {btnAjouterSport}
-          {cardSport}
-          {cardSemaineSport}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {headerJour}
-          {cardKcal}
-          {btnCopier}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            {cartesRepas}
+      <div style={{ display: "grid", gridTemplateColumns: "460px 1fr", gap: 0, alignItems: "stretch", background: C.bg, minHeight: "calc(100vh - 80px)" }}>
+        <div style={{ padding: "40px 44px 60px", borderRight: `2px solid ${C.divider}`, display: "flex", flexDirection: "column", gap: 32 }}>
+          {panneauResume}
+          <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 24 }}>
+            <div style={{ ...S.sectionLabel, marginBottom: 14 }}>CALENDRIER</div>
+            {calendrier}
           </div>
+        </div>
+        <div style={{ padding: "40px 44px 60px" }}>
+          {panneauRepas}
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, padding: "8px 4px" }}>
+      {panneauResume}
+      <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 22 }} />
       {calendrier}
-      {headerJour}
-      {cardKcal}
-      {btnAjouterSport}
-      {btnCopier}
-      {cardSport}
-      {cardSemaineSport}
-      {cartesRepas}
+      {panneauRepas}
     </div>
+  );
+}
+
+/* Clic sur le nombre de grammes d'un aliment → input inline pour taper une valeur libre. */
+function InlineGrams({ entry, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(String(entry.grams));
+  useEffect(() => { if (!editing) setVal(String(entry.grams)); }, [entry.grams, editing]);
+
+  function commit() {
+    const g = Math.max(1, Math.round(Number(val)) || entry.grams);
+    if (g !== entry.grams && onSave) onSave(entry.id, g);
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minWidth: 90, justifyContent: "center" }}>
+        <input type="number" autoFocus value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setVal(String(entry.grams)); setEditing(false); } }}
+          style={{ width: 56, padding: "2px 6px", fontSize: 12, border: `1px solid ${C.accent}`, borderRadius: 0, textAlign: "right", fontFamily: "'Archivo', sans-serif", outline: "none", color: C.ink, background: "#fff" }} />
+        <span style={{ fontSize: 11, color: C.muted }}>g</span>
+      </span>
+    );
+  }
+  return (
+    <span onClick={() => setEditing(true)}
+      title="Cliquer pour taper une valeur libre"
+      style={{ fontSize: 12, color: C.muted, minWidth: 90, textAlign: "center", cursor: "pointer", borderBottom: `1px dashed ${C.divider}`, padding: "2px 0" }}>
+      {entry.grams} g · {Math.round(entry.kcal)} kcal
+    </span>
   );
 }
 
@@ -2574,130 +2646,190 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
   const moy = data.length ? Math.round(data.filter((d) => d.v > 0).reduce((a, d) => a + d.v, 0) / Math.max(1, data.filter((d) => d.v > 0).length)) : 0;
   const sportTotal = metric === "sport" ? data.reduce((a, d) => a + d.v, 0) : 0;
 
-  const Row = ({ l, r, strong, color }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 14 }}>
-      <span style={{ color: C.muted }}>{l}</span>
-      <span style={{ fontWeight: strong ? 800 : 600, color: color || C.ink }}>{r}</span>
-    </div>
-  );
+  /* Bandeau chiffre-clé + stats secondaires selon la métrique */
+  const stats = (() => {
+    if (metric === "poids") {
+      const dernier = poidsLog[poidsLog.length - 1];
+      const depart = poidsLog[0];
+      const delta = depart && dernier ? +(dernier.poids - depart.poids).toFixed(1) : null;
+      const perDay = poidsTrend ? +(poidsTrend.perWeek / 7).toFixed(2) : null;
+      return {
+        kickerBig: "POIDS ACTUEL",
+        big: dernier ? dernier.poids : "—",
+        bigUnit: "kg",
+        bigColor: C.accent,
+        secondaires: [
+          delta !== null && { label: "DEPUIS LE DÉBUT", val: `${delta > 0 ? "+" : ""}${delta} kg`, color: delta <= 0 ? C.positive : C.negative },
+          perDay !== null && { label: "PAR JOUR", val: `${perDay > 0 ? "+" : ""}${perDay} kg`, color: C.ink },
+        ].filter(Boolean),
+      };
+    }
+    if (metric === "sport") {
+      return {
+        kickerBig: "SPORT TOTAL",
+        big: sportTotal,
+        bigUnit: "kcal",
+        bigColor: C.accent,
+        secondaires: [
+          { label: "≈ GRAS BRÛLÉ", val: `${Math.round(sportTotal / 7.7)} g`, color: C.ink },
+          { label: gran === "semaine" ? "MOY. / SEMAINE" : "MOY. / MOIS", val: `${data.length ? Math.round(sportTotal / data.length) : 0} kcal`, color: C.ink },
+        ],
+      };
+    }
+    const enTarget = data.filter((d) => d.v > 0 && d.v <= cible).length;
+    const withData = data.filter((d) => d.v > 0).length;
+    return {
+      kickerBig: metric === "net" ? "MOYENNE NETTE" : "MOYENNE MANGÉE",
+      big: moy || 0,
+      bigUnit: "kcal / j",
+      bigColor: C.accent,
+      secondaires: [
+        { label: "CIBLE", val: `${cible}`, color: C.ink },
+        withData > 0 && { label: gran === "semaine" ? "JOURS SOUS CIBLE" : "PÉRIODES SOUS CIBLE", val: `${enTarget}/${withData}`, color: C.accent },
+      ].filter(Boolean),
+    };
+  })();
+
+  const bilanRows = bilan.days > 0 ? [
+    { l: "Moyenne mangée / jour", r: `${bilan.avgIntake} kcal` },
+    { l: "Sport / jour (moy.)", r: `${bilan.avgSport} kcal` },
+    { l: "Déficit estimé / jour", r: `${bilan.deficit >= 0 ? "−" : "+"}${Math.abs(bilan.deficit)} kcal`, strong: true, color: bilan.deficit >= 0 ? C.positive : C.negative },
+    { l: "Projection", r: `${bilan.kgWeek > 0 ? "+" : ""}${bilan.kgWeek.toFixed(2)} kg/sem`, strong: true, color: bilan.kgWeek <= 0 ? C.positive : C.negative },
+    poidsTrend && { l: `Réel — balance (${poidsTrend.span} j)`, r: `${poidsTrend.perWeek > 0 ? "+" : ""}${poidsTrend.perWeek.toFixed(2)} kg/sem`, color: poidsTrend.perWeek <= 0 ? C.positive : C.negative },
+  ].filter(Boolean) : [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={S.card}>
-        <div style={S.sectionLabel}>Bilan des 7 derniers jours</div>
-        {bilan.days === 0 ? (
-          <div style={{ ...S.miniMuted, fontSize: 13 }}>Encore aucun repas cette semaine.</div>
-        ) : (
-          <>
-            <Row l="Moyenne mangée / jour" r={`${bilan.avgIntake} kcal`} />
-            <Row l="Sport / jour (moy.)" r={`${bilan.avgSport} kcal`} />
-            <Row l="Déficit estimé / jour" r={`${bilan.deficit >= 0 ? "−" : "+"}${Math.abs(bilan.deficit)} kcal`} strong
-              color={bilan.deficit >= 0 ? C.green : C.red} />
-            <Row l="Projection" r={`${bilan.kgWeek > 0 ? "+" : ""}${bilan.kgWeek.toFixed(2)} kg/sem`} strong
-              color={bilan.kgWeek <= 0 ? C.green : C.red} />
-            {poidsTrend && (
-              <Row l={`Réel — balance (${poidsTrend.span} j)`}
-                r={`${poidsTrend.perWeek > 0 ? "+" : ""}${poidsTrend.perWeek.toFixed(2)} kg/sem`}
-                color={poidsTrend.perWeek <= 0 ? C.green : C.red} />
-            )}
-            <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 8 }}>
-              La projection est une estimation. Si elle s'écarte du réel de la balance sur 2-3 semaines, ajuste de 100-200 kcal.
-            </div>
-          </>
-        )}
-      </div>
+    <div style={{ padding: "40px 44px 60px", background: C.bg }}>
+      {/* Kicker STATISTIQUES */}
+      <div style={S.kicker}>STATISTIQUES</div>
+      <div style={S.kickerTrait} />
 
-      <div style={{ display: "flex", gap: 6, padding: "0 4px" }}>
-        {[["calories", "Calories"], ["net", "Net"], ["poids", "Poids"], ["sport", "Sport"]].map(([k, l]) => (
-          <button key={k} onClick={() => { setMetric(k); setZoom(0); }} style={{ ...S.tabPill, fontSize: 13, padding: "10px 0", ...(metric === k ? S.tabPillOn : {}) }}>{l}</button>
-        ))}
-      </div>
-
-      <div style={S.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {[["semaine", "Par semaine"], ["mois", "Par mois"]].map(([k, l]) => (
-              <button key={k} onClick={() => { setGran(k); setZoom(0); }}
-                style={{ ...S.miniTab, ...(gran === k ? S.miniTabOn : {}) }}>{l}</button>
+      {/* Contrôles segmentés Mesure + Période */}
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 24, marginBottom: 32 }}>
+        <div>
+          <div style={{ ...S.sectionLabel, marginBottom: 8 }}>MESURE</div>
+          <div style={{ display: "inline-flex", border: `1px solid ${C.divider}` }}>
+            {[["calories", "Calories"], ["net", "Net"], ["poids", "Poids"], ["sport", "Sport"]].map(([k, l], i) => (
+              <button key={k} onClick={() => { setMetric(k); setZoom(0); }}
+                style={{ padding: "9px 20px", border: "none", borderLeft: i === 0 ? "none" : `1px solid ${C.divider}`, background: metric === k ? C.accent : "#fff", color: metric === k ? "#fff" : C.ink, fontFamily: "'Archivo', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em" }}>
+                {l}
+              </button>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button style={S.zoomBtn} onClick={() => setZoom((z) => Math.min(FEN.length - 1, z + 1))}>−</button>
-            <span style={{ ...S.miniMuted, minWidth: 54, textAlign: "center" }}>
-              {gran === "semaine" ? `${span} sem` : `${span} mois`}
-            </span>
-            <button style={S.zoomBtn} onClick={() => setZoom((z) => Math.max(0, z - 1))}>＋</button>
+        </div>
+        <div>
+          <div style={{ ...S.sectionLabel, marginBottom: 8 }}>PÉRIODE</div>
+          <div style={{ display: "inline-flex", border: `1px solid ${C.divider}` }}>
+            {[["semaine", "Semaine"], ["mois", "Mois"]].map(([k, l], i) => (
+              <button key={k} onClick={() => { setGran(k); setZoom(0); }}
+                style={{ padding: "9px 20px", border: "none", borderLeft: i === 0 ? "none" : `1px solid ${C.divider}`, background: gran === k ? C.accent : "#fff", color: gran === k ? "#fff" : C.ink, fontFamily: "'Archivo', sans-serif", fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: "0.02em" }}>
+                {l}
+              </button>
+            ))}
           </div>
         </div>
-
-        <div style={{ ...S.miniMuted, marginBottom: 6 }}>
-          {metric === "calories"
-            ? `Moyenne ${moy || 0} kcal · cible ${cible}`
-            : metric === "net"
-            ? `Kcal mangées − kcal brûlées par le sport · cible ${cible}`
-            : metric === "sport"
-            ? `Déficit creusé par le sport · total ${sportTotal} kcal ≈ ${Math.round(sportTotal / 7.7)} g de gras`
-            : `Objectif ${objectif} kg`}
-        </div>
-        {metric === "net" && (
-          <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 8, background: "#EAF5F6", borderRadius: 8, padding: "6px 10px", lineHeight: 1.5, color: "#2C7A86" }}>
-            <b>Net = ce que tu as réellement absorbé.</b> Si tu manges 2 200 kcal mais dépenses 400 kcal en sport, ton net est 1 800. C'est ce chiffre qui compte face à ta cible quand tu logges tes séances.
-          </div>
-        )}
-
-        <div style={{ height: 250 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            {metric === "poids" ? (
-              <LineChart data={data} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E6EAE2" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.muted }} axisLine={false} tickLine={false} interval={xInterval} angle={xAngle} textAnchor={xAngle ? "end" : "middle"} height={xHeight} />
-                <YAxis domain={["dataMin - 1", "dataMax + 1"]} tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v) => [`${v} kg`, ""]} contentStyle={S.tooltip} />
-                <ReferenceLine y={refLine} stroke={C.amber} strokeDasharray="5 4" strokeWidth={2} />
-                <Line type="monotone" dataKey="v" stroke={C.green} strokeWidth={3} dot={{ r: 3, fill: C.green }} activeDot={{ r: 6 }} />
-                {gran === "semaine" && <Line type="monotone" dataKey="ma" stroke={C.amber} strokeWidth={2} strokeDasharray="5 4" dot={false} />}
-              </LineChart>
-            ) : (
-              <BarChart data={data} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E6EAE2" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: C.muted }} axisLine={false} tickLine={false} interval={xInterval} angle={xAngle} textAnchor={xAngle ? "end" : "middle"} height={xHeight} />
-                <YAxis tick={{ fontSize: 11, fill: C.muted }} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v) => [`${v} kcal`, ""]} contentStyle={S.tooltip} />
-                {metric !== "sport" && <ReferenceLine y={refLine} stroke={C.amber} strokeDasharray="5 4" strokeWidth={2} />}
-                <Bar dataKey="v" radius={[5, 5, 0, 0]}>
-                  {data.map((d, i) => <Cell key={i} fill={metric === "sport" ? "#3E9CA8" : (d.v === 0 ? "#DDE3DA" : d.v <= cible ? C.green : C.red)} />)}
-                </Bar>
-              </BarChart>
-            )}
-          </ResponsiveContainer>
-        </div>
-
-        {metric === "poids" && gran === "semaine" && (
-          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-            <Legend couleur={C.green} txt="Poids" />
-            <Legend couleur={C.amber} txt="Moyenne 7 j" dash />
-          </div>
-        )}
-        {(metric === "calories" || metric === "net") && (
-          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-            <Legend couleur={C.green} txt={gran === "semaine" ? "Sous la cible" : "Moy. sous cible"} />
-            <Legend couleur={C.red} txt="Au-dessus" />
-            <Legend couleur={C.amber} txt="Cible" dash />
-          </div>
-        )}
-        {metric === "sport" && (
-          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-            <Legend couleur="#3E9CA8" txt={gran === "semaine" ? "Déficit sport / semaine" : "Déficit sport / mois"} />
-          </div>
-        )}
       </div>
 
-      <div style={{ ...S.miniMuted, textAlign: "center", fontSize: 12, padding: "0 20px" }}>
+      {/* Divider 2px */}
+      <div style={{ borderTop: `2px solid ${C.divider}`, marginBottom: 32 }} />
+
+      {/* Bandeau chiffre-clé */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 56, flexWrap: "wrap", marginBottom: 32 }}>
+        <div>
+          <div style={{ ...S.sectionLabel, marginBottom: 12 }}>{stats.kickerBig}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+            <div style={{ fontSize: 72, fontWeight: 800, letterSpacing: "-0.03em", color: stats.bigColor, lineHeight: 0.85, fontFamily: "'Archivo', sans-serif" }}>
+              {stats.big}
+            </div>
+            <div style={{ fontSize: 15, color: C.muted, fontWeight: 500 }}>{stats.bigUnit}</div>
+          </div>
+        </div>
+        {stats.secondaires.map((s, i) => (
+          <div key={i}>
+            <div style={{ ...S.sectionLabel, marginBottom: 12 }}>{s.label}</div>
+            <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em", color: s.color, lineHeight: 1, fontFamily: "'Archivo', sans-serif" }}>{s.val}</div>
+          </div>
+        ))}
+        {/* Zoom compact */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+          <button style={S.zoomBtn} onClick={() => setZoom((z) => Math.min(FEN.length - 1, z + 1))}>−</button>
+          <span style={{ fontSize: 12, color: C.muted, minWidth: 60, textAlign: "center", fontWeight: 600 }}>
+            {gran === "semaine" ? `${span} sem` : `${span} mois`}
+          </span>
+          <button style={S.zoomBtn} onClick={() => setZoom((z) => Math.max(0, z - 1))}>+</button>
+        </div>
+      </div>
+
+      {metric === "net" && (
+        <div style={{ fontSize: 12, color: C.accent, background: C.accentTint, padding: "10px 14px", marginBottom: 18, lineHeight: 1.55 }}>
+          <b>Net = ce que tu as réellement absorbé.</b> Si tu manges 2 200 kcal mais dépenses 400 kcal en sport, ton net est 1 800. C'est ce chiffre qui compte face à ta cible quand tu logges tes séances.
+        </div>
+      )}
+
+      {/* Graphique — restylé Modernist */}
+      <div style={{ height: 320, marginBottom: 22 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {metric === "poids" ? (
+            <LineChart data={data} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="0" stroke={C.divider} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={{ stroke: C.divider }} tickLine={false} interval={xInterval} angle={xAngle} textAnchor={xAngle ? "end" : "middle"} height={xHeight} />
+              <YAxis domain={["dataMin - 1", "dataMax + 1"]} tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={false} tickLine={false} width={36} />
+              <Tooltip formatter={(v) => [`${v} kg`, ""]} contentStyle={S.tooltip} labelStyle={{ color: C.muted }} />
+              <ReferenceLine y={refLine} stroke={C.accent} strokeDasharray="4 4" strokeWidth={1.5}
+                label={{ value: `Objectif ${refLine}`, position: "right", fill: C.accent, fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
+              <Line type="monotone" dataKey="v" stroke={C.accent} strokeWidth={2.5} dot={{ r: 3, fill: C.accent, strokeWidth: 0 }} activeDot={{ r: 6, fill: C.accent }} />
+              {gran === "semaine" && <Line type="monotone" dataKey="ma" stroke={C.accentDark} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />}
+            </LineChart>
+          ) : (
+            <BarChart data={data} margin={{ top: 24, right: 24, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="0" stroke={C.divider} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={{ stroke: C.divider }} tickLine={false} interval={xInterval} angle={xAngle} textAnchor={xAngle ? "end" : "middle"} height={xHeight} />
+              <YAxis tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={false} tickLine={false} width={36} />
+              <Tooltip formatter={(v) => [`${v} kcal`, ""]} contentStyle={S.tooltip} labelStyle={{ color: C.muted }} cursor={{ fill: C.accentTint }} />
+              {metric !== "sport" && (
+                <ReferenceLine y={refLine} stroke={C.accent} strokeDasharray="4 4" strokeWidth={1.5}
+                  label={{ value: `Cible ${refLine}`, position: "right", fill: C.accent, fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
+              )}
+              <Bar dataKey="v" radius={0} fill={metric === "net" ? C.accentDark : C.accent}>
+                {data.map((d, i) => (
+                  <Cell key={i}
+                    fill={d.v === 0 ? C.divider
+                      : metric === "sport" ? C.accent
+                      : metric === "net" ? C.accentDark
+                      : (d.v <= cible ? C.accent : C.negative)} />
+                ))}
+              </Bar>
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 32, lineHeight: 1.55 }}>
         {metric === "sport"
           ? (gran === "semaine" ? "Chaque barre = calories brûlées en sport dans la semaine." : "Chaque barre = calories brûlées en sport dans le mois.")
-          : (gran === "mois" ? "Chaque barre = moyenne des kcal/jour du mois." : "Chaque barre = total du jour.")}
-        {" "}Utilise − / ＋ pour zoomer.
+          : metric === "poids"
+          ? "Courbe = poids enregistré. Ligne pointillée = ton objectif."
+          : (gran === "mois" ? "Chaque barre = moyenne des kcal/jour du mois. Ligne pointillée = cible." : "Chaque barre = total du jour. Ligne pointillée = cible.")}
+        {" "}Utilise − / + pour zoomer.
       </div>
+
+      {/* Bilan 7 jours */}
+      {bilanRows.length > 0 && (
+        <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 24 }}>
+          <div style={{ ...S.sectionLabel, marginBottom: 14 }}>BILAN — 7 DERNIERS JOURS</div>
+          <div>
+            {bilanRows.map((r, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i === bilanRows.length - 1 ? "none" : `1px solid ${C.divider}`, fontSize: 14 }}>
+                <span style={{ color: C.muted }}>{r.l}</span>
+                <span style={{ fontWeight: r.strong ? 800 : 600, color: r.color || C.ink, fontFamily: "'Archivo', sans-serif" }}>{r.r}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 12, lineHeight: 1.55 }}>
+            La projection est une estimation. Si elle s'écarte du réel de la balance sur 2-3 semaines, ajuste de 100-200 kcal.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3411,75 +3543,103 @@ function Splash() {
 }
 
 /* --------------------------- Style tokens -------------------------- */
+/* Direction Modernist : plat, angles droits, filets nets, une seule couleur d'accent. */
 const C = {
-  bg: "#F4F6F1", card: "#FFFFFF", ink: "#17241C", green: "#2C6E49",
-  greenPale: "#EAF1EB", amber: "#E0912F", red: "#C0562B", muted: "#7C8A80",
+  bg: "#F3F2F2",
+  card: "#FFFFFF",
+  ink: "#201E1D",
+  muted: "rgba(32,30,29,.52)",
+  divider: "rgba(32,30,29,.14)",
+  dividerStrong: "rgba(32,30,29,.22)",
+  accent: "#235C86",
+  accentDark: "#184863",
+  accentTint: "#E4EDF3",
+  positive: "#2C6E49",
+  negative: "#C0562B",
+  // Alias historiques — pointent vers la nouvelle palette pour ne rien casser
+  green: "#235C86",       // ex-vert primaire → accent
+  greenPale: "#E4EDF3",   // ex-vert pâle → tint
+  amber: "#235C86",       // couleur secondaire → accent (une seule couleur d'accent)
+  red: "#C0562B",
 };
+
 const S = {
   app: { maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: C.bg, color: C.ink,
-    fontFamily: "'Inter', system-ui, sans-serif", display: "flex", flexDirection: "column", position: "relative" },
+    fontFamily: "'Archivo', system-ui, sans-serif", display: "flex", flexDirection: "column", position: "relative" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 18px 12px", position: "sticky", top: 0, zIndex: 5, background: C.bg },
-  logo: { fontSize: 22, fontWeight: 800, letterSpacing: -0.5, fontFamily: "'Space Grotesk', sans-serif" },
+  logo: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif", color: C.ink },
   sub: { fontSize: 12, color: C.muted, marginTop: 2 },
   main: { flex: 1, padding: "4px 14px 96px", overflowY: "auto" },
-  card: { background: C.card, borderRadius: 18, padding: 16, border: "2px solid #E0E6DA", boxShadow: "0 2px 6px rgba(23,36,28,.07)" },
+  // Cartes = surface blanche plate, aucun radius ni ombre
+  card: { background: C.card, borderRadius: 0, padding: 18, border: "none" },
+  cardFramed: { background: C.card, borderRadius: 0, padding: 18, border: `2px solid ${C.divider}` },
   nav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480,
-    display: "flex", justifyContent: "space-around", background: "#fff", borderTop: "1px solid #E6EAE2", padding: "8px 0 10px", zIndex: 10 },
-  navBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "4px 12px" },
-  navBtnOn: { color: C.green, fontWeight: 700 },
-  bigNum: { fontSize: 30, fontWeight: 800, letterSpacing: -1, fontFamily: "'Space Grotesk', sans-serif" },
+    display: "flex", justifyContent: "space-around", background: "#fff", borderTop: `1px solid ${C.divider}`, padding: "8px 0 10px", zIndex: 10 },
+  navBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "4px 12px", fontFamily: "'Archivo', sans-serif" },
+  navBtnOn: { color: C.accent, fontWeight: 700 },
+  bigNum: { fontSize: 42, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif", lineHeight: 0.9, color: C.ink },
   miniMuted: { fontSize: 12, color: C.muted },
-  sectionLabel: { fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: C.muted, marginBottom: 10 },
-  dateArrow: { background: "none", border: "none", fontSize: 26, color: C.green, cursor: "pointer", width: 40 },
-  entryRow: { display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #F0F2ED" },
-  thumb: { width: 40, height: 40, borderRadius: 9, objectFit: "cover" },
-  del: { background: "#F6F8F3", border: "none", borderRadius: 8, width: 28, height: 28, fontSize: 18, color: C.muted, cursor: "pointer", flexShrink: 0 },
-  input: { width: "100%", padding: "12px 14px", borderRadius: 12, border: "1px solid #E1E6DC", fontSize: 15, background: "#FAFBF8", boxSizing: "border-box", outline: "none", color: C.ink },
-  chip: { padding: "9px 14px", borderRadius: 20, border: "1px solid #E1E6DC", background: "#fff", fontSize: 14, cursor: "pointer", color: C.ink, textTransform: "capitalize" },
-  chipOn: { background: C.green, color: "#fff", borderColor: C.green, fontWeight: 600 },
-  foodRow: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 6px", background: "none", border: "none", borderBottom: "1px solid #F2F4EF", cursor: "pointer" },
-  dot: { width: 9, height: 9, borderRadius: 5, flexShrink: 0 },
-  qBtn: { flex: 1, padding: "8px 0", borderRadius: 10, border: "1px solid #E1E6DC", background: "#fff", fontSize: 13, cursor: "pointer", color: C.ink },
-  calcBox: { display: "flex", justifyContent: "space-between", alignItems: "center", background: C.greenPale, borderRadius: 12, padding: "12px 14px", marginTop: 12 },
-  photoBtn: { flex: 1, padding: "11px 0", borderRadius: 12, border: "1px dashed #C7D2C6", background: "#fff", fontSize: 14, cursor: "pointer", color: C.green, fontWeight: 600 },
-  primaryBtn: { width: "100%", marginTop: 14, padding: "14px 0", borderRadius: 14, border: "none", background: C.green, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" },
-  linkBtn: { background: "none", border: "none", color: C.green, fontSize: 13, cursor: "pointer", textDecoration: "underline" },
-  radioRow: { display: "flex", justifyContent: "space-between", padding: "12px 14px", borderRadius: 12, border: "1px solid #E1E6DC", background: "#fff", cursor: "pointer", fontSize: 14, color: C.ink },
-  radioOn: { borderColor: C.green, background: C.greenPale, fontWeight: 600 },
-  addDayBtn: { width: "100%", padding: "13px 0", borderRadius: 14, border: "2px solid rgba(23,36,28,0.12)", background: C.amber, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" },
-  addSmall: { padding: "8px 12px", borderRadius: 20, border: "none", background: C.green, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  sportAddBtn: { padding: "8px 12px", borderRadius: 20, border: "none", background: "#3E9CA8", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" },
-  copyBtn: { width: "100%", padding: "10px 0", borderRadius: 12, border: "1px solid #E1E6DC", background: "#fff", color: C.green, fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  favBtn: { padding: "5px 9px", borderRadius: 14, border: "1px solid #D8E2D6", background: "#F6F8F3", color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" },
-  badge: { fontSize: 10, background: C.greenPale, color: C.green, padding: "1px 6px", borderRadius: 6, marginLeft: 6, fontWeight: 700, verticalAlign: "middle" },
-  // calendrier
+  kicker: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: C.accent },
+  kickerTrait: { width: 44, height: 3, background: C.accent, marginTop: 8, marginBottom: 22 },
+  sectionLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: C.muted, marginBottom: 10 },
+  dateArrow: { background: "none", border: `1px solid ${C.divider}`, borderRadius: 0, fontSize: 20, color: C.accent, cursor: "pointer", width: 32, height: 32, display: "grid", placeItems: "center", padding: 0 },
+  entryRow: { display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderTop: `1px solid ${C.divider}` },
+  thumb: { width: 40, height: 40, borderRadius: 0, objectFit: "cover" },
+  del: { background: "transparent", border: `1px solid ${C.divider}`, borderRadius: 0, width: 30, height: 30, fontSize: 16, color: C.muted, cursor: "pointer", flexShrink: 0, display: "grid", placeItems: "center", padding: 0 },
+  input: { width: "100%", padding: "11px 14px", borderRadius: 0, border: `1px solid ${C.divider}`, fontSize: 15, background: "#fff", boxSizing: "border-box", outline: "none", color: C.ink, fontFamily: "'Archivo', sans-serif" },
+  chip: { padding: "9px 14px", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", fontSize: 13, cursor: "pointer", color: C.ink, fontFamily: "'Archivo', sans-serif" },
+  chipOn: { background: C.accent, color: "#fff", borderColor: C.accent, fontWeight: 700 },
+  foodRow: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 6px", background: "none", border: "none", borderBottom: `1px solid ${C.divider}`, cursor: "pointer", fontFamily: "'Archivo', sans-serif" },
+  dot: { width: 9, height: 9, borderRadius: 0, flexShrink: 0, background: C.accent },
+  qBtn: { flex: 1, padding: "8px 0", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", fontSize: 13, cursor: "pointer", color: C.ink, fontFamily: "'Archivo', sans-serif" },
+  calcBox: { display: "flex", justifyContent: "space-between", alignItems: "center", background: C.accentTint, borderRadius: 0, padding: "12px 14px", marginTop: 12 },
+  photoBtn: { flex: 1, padding: "11px 0", borderRadius: 0, border: `1px dashed ${C.dividerStrong}`, background: "#fff", fontSize: 14, cursor: "pointer", color: C.accent, fontWeight: 700 },
+  primaryBtn: { width: "100%", marginTop: 14, padding: "14px 0", borderRadius: 0, border: "none", background: C.accent, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" },
+  linkBtn: { background: "none", border: "none", color: C.accent, fontSize: 13, cursor: "pointer", textDecoration: "none", fontWeight: 600, fontFamily: "'Archivo', sans-serif" },
+  radioRow: { display: "flex", justifyContent: "space-between", padding: "12px 14px", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontSize: 14, color: C.ink, fontFamily: "'Archivo', sans-serif" },
+  radioOn: { borderColor: C.accent, background: C.accentTint, fontWeight: 700, color: C.accent },
+  addDayBtn: { width: "100%", padding: "13px 0", borderRadius: 0, border: `2px solid ${C.accent}`, background: "#fff", color: C.accent, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" },
+  addSmall: { padding: "8px 14px", borderRadius: 0, border: "none", background: C.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif" },
+  sportAddBtn: { padding: "8px 14px", borderRadius: 0, border: "none", background: C.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  copyBtn: { width: "100%", padding: "10px 0", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif" },
+  favBtn: { padding: "5px 10px", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  badge: { fontSize: 10, background: C.accentTint, color: C.accent, padding: "2px 6px", borderRadius: 0, marginLeft: 6, fontWeight: 700, verticalAlign: "middle", letterSpacing: "0.06em", textTransform: "uppercase" },
+  // calendrier — mobile
   calHead: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 },
-  calHeadCell: { textAlign: "center", fontSize: 11, color: C.muted, fontWeight: 600 },
-  calGrid: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 3 },
-  calCell: { aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: "#F6F8F3", border: "none", borderRadius: 10, cursor: "pointer", color: C.ink, position: "relative" },
-  calCellSel: { background: C.green, color: "#fff" },
-  calCellToday: { border: `2px solid ${C.green}` },
-  calDot: { width: 5, height: 5, borderRadius: 3 },
+  calHeadCell: { textAlign: "center", fontSize: 11, color: C.muted, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" },
+  calGrid: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 0, border: `1px solid ${C.divider}` },
+  calCell: { aspectRatio: "1", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: "#fff", border: `1px solid ${C.divider}`, borderRadius: 0, cursor: "pointer", color: C.ink, position: "relative", margin: -0.5, fontFamily: "'Archivo', sans-serif" },
+  calCellSel: { background: C.accent, color: "#fff" },
+  calCellToday: { outline: `2px solid ${C.accent}`, outlineOffset: "-2px" },
+  calDot: { width: 4, height: 4, borderRadius: 0 },
   // sheet
-  overlay: { position: "fixed", inset: 0, background: "rgba(23,36,28,.45)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center" },
-  sheet: { width: "100%", maxWidth: 480, background: C.bg, borderRadius: "22px 22px 0 0", padding: "10px 16px 28px", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" },
-  sheetGrab: { width: 40, height: 4, borderRadius: 3, background: "#CFD8CD", margin: "4px auto 12px" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(20,18,17,.42)", zIndex: 50, display: "flex", alignItems: "flex-end", justifyContent: "center" },
+  sheet: { width: "100%", maxWidth: 520, background: "#fff", borderRadius: 0, border: `2px solid ${C.ink}`, padding: "18px 22px 26px", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" },
+  sheetGrab: { width: 40, height: 3, background: C.divider, margin: "0 auto 14px" },
   // graphique
-  tabPill: { flex: 1, padding: "11px 0", borderRadius: 12, border: "1px solid #E1E6DC", background: "#fff", fontSize: 14, fontWeight: 600, color: C.ink, cursor: "pointer" },
-  tabPillOn: { background: C.ink, color: "#fff", borderColor: C.ink },
-  miniTab: { padding: "7px 12px", borderRadius: 10, border: "1px solid #E1E6DC", background: "#fff", fontSize: 13, cursor: "pointer", color: C.ink },
-  miniTabOn: { background: C.green, color: "#fff", borderColor: C.green, fontWeight: 600 },
-  zoomBtn: { width: 32, height: 32, borderRadius: 9, border: "1px solid #E1E6DC", background: "#fff", fontSize: 18, cursor: "pointer", color: C.green, fontWeight: 700 },
-  tooltip: { borderRadius: 10, border: "none", boxShadow: "0 4px 14px rgba(0,0,0,.12)", fontSize: 13 },
+  tabPill: { flex: 1, padding: "11px 0", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", fontSize: 13, fontWeight: 700, color: C.ink, cursor: "pointer", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" },
+  tabPillOn: { background: C.accent, color: "#fff", borderColor: C.accent },
+  miniTab: { padding: "8px 14px", borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", fontSize: 13, cursor: "pointer", color: C.ink, fontFamily: "'Archivo', sans-serif", fontWeight: 600 },
+  miniTabOn: { background: C.accent, color: "#fff", borderColor: C.accent, fontWeight: 700 },
+  zoomBtn: { width: 32, height: 32, borderRadius: 0, border: `1px solid ${C.divider}`, background: "#fff", fontSize: 18, cursor: "pointer", color: C.accent, fontWeight: 700, display: "grid", placeItems: "center", padding: 0 },
+  tooltip: { borderRadius: 0, border: `1px solid ${C.divider}`, boxShadow: "none", fontSize: 13, background: "#fff", fontFamily: "'Archivo', sans-serif" },
 };
+
+/* Aliases pour compat MEAL_COLORS — utilisés uniquement dans le calendrier (pastilles) */
+// La direction Modernist abandonne les couleurs de repas : on remplace par l'accent partout.
 
 function StyleInject() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700;800&display=swap');
-      * { -webkit-tap-highlight-color: transparent; }
-      body { margin: 0; }
-      input[type=range] { height: 24px; }
+      @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
+      * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+      html, body { margin: 0; background: ${C.bg}; color: ${C.ink}; font-family: 'Archivo', system-ui, sans-serif; }
+      ::selection { background: ${C.accentTint}; color: ${C.ink}; }
+      input[type=range] { height: 24px; accent-color: ${C.accent}; }
+      button, input, select, textarea { font-family: 'Archivo', system-ui, sans-serif; }
+      button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid ${C.accent}; outline-offset: 2px; }
+      a { color: ${C.accent}; }
+      a:hover { color: ${C.accentDark}; }
       ::-webkit-scrollbar { width: 0; height: 0; }
     `}</style>
   );

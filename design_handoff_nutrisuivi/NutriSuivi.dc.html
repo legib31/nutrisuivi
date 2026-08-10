@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="_ds/modernist-f5a600f9-46f9-4fe6-b44e-74b8f8253778/styles.css">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  :root{--c:#235C86;--c-700:#184863;--c-100:#e4edf3}
+  body{margin:0;background:var(--color-bg);font-family:"Archivo",system-ui,sans-serif;color:var(--color-text)}
+  *{box-sizing:border-box}
+  a{color:var(--c);text-decoration:none} a:hover{color:var(--c-700)}
+  ::selection{background:var(--c-100)}
+  .hd{font-family:"Archivo",sans-serif;font-weight:800;letter-spacing:-0.01em}
+  .mut{color:color-mix(in srgb,var(--color-text) 52%,transparent)}
+  .up{font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  .track{background:var(--color-bg);border:1px solid var(--color-divider)}
+  .track>b{display:block;height:100%;background:var(--c);transition:width .3s ease}
+  .lnk{color:var(--c);cursor:pointer;font-weight:600;font-size:12px}
+  .lnk:hover{color:var(--c-700)}
+  .icobtn{cursor:pointer;display:inline-flex;color:color-mix(in srgb,var(--color-text) 52%,transparent);border:none;background:none;padding:2px}
+  .icobtn:hover{color:var(--c)}
+  .food{display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--color-divider)}
+  .addlnk{display:inline-flex;align-items:center;gap:5px;color:var(--c);font-weight:600;font-size:13px;cursor:pointer;margin-top:10px;border:none;background:none;padding:0}
+  .addlnk:hover{color:var(--c-700)}
+  .mealsec{padding:16px 0;border-top:2px solid var(--color-divider)}
+  .qtybtn{width:30px;height:30px;border:1px solid var(--color-divider);background:var(--color-surface);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:var(--color-text)}
+  .qtybtn:hover{border-color:var(--c);color:var(--c)}
+  .catrow{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--color-divider);cursor:pointer}
+  .catrow:hover{background:var(--c-100)}
+  .backdrop{position:fixed;inset:0;background:rgba(20,18,17,.42);display:flex;align-items:flex-start;justify-content:center;padding:56px 20px;z-index:50;overflow:auto}
+  .modal{background:var(--color-bg);border:2px solid var(--color-text);width:100%;max-width:520px;box-shadow:0 24px 60px rgba(20,18,17,.28)}
+  .searchinp{width:100%;border:1px solid var(--color-divider);background:var(--color-surface);padding:11px 13px;font-family:inherit;font-size:14px;color:var(--color-text);outline:none}
+  .searchinp:focus{border-color:var(--c);outline:2px solid var(--c);outline-offset:-1px}
+  .tab{font-family:"Archivo",sans-serif;font-weight:700;font-size:13px;padding:8px 14px;border:none;background:none;color:color-mix(in srgb,var(--color-text) 55%,transparent);cursor:pointer;border-bottom:2px solid transparent}
+  .tab:hover{color:var(--color-text)}
+  .tab[data-on="true"]{color:var(--c);border-bottom-color:var(--c)}
+  .seg{font-family:"Archivo",sans-serif;font-weight:700;font-size:13px;padding:9px 16px;border:none;background:var(--color-surface);color:color-mix(in srgb,var(--color-text) 60%,transparent);cursor:pointer;border-right:1px solid var(--color-divider)}
+  .seg:last-child{border-right:none}
+  .seg:hover{color:var(--color-text)}
+  .seg[data-on="true"]{background:var(--c);color:#fff}
+</style>
+</helmet>
+
+<div style="max-width:1300px;margin:0 auto;min-height:100vh;background:var(--color-bg)">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 40px;border-bottom:2px solid var(--color-divider)">
+    <span style="font-family:'Archivo',sans-serif;font-weight:800;font-size:20px;letter-spacing:-0.02em">NutriSuivi</span>
+    <div style="display:flex;gap:2px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+        <button class="tab" data-on="{{ t.on }}" onClick="{{ t.go }}">{{ t.label }}</button>
+      </sc-for>
+    </div>
+    <span class="mut" style="font-size:13px">{{ dateLabel }} · Objectif 80 kg</span>
+  </div>
+
+  <sc-if value="{{ isAgenda }}" hint-placeholder-val="{{ true }}">
+  <div style="display:grid;grid-template-columns:minmax(0,460px) 1fr">
+    <!-- LEFT summary -->
+    <div style="padding:46px 42px;border-right:2px solid var(--color-divider);display:flex;flex-direction:column;min-height:800px">
+      <div style="font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--c)">Aujourd'hui</div>
+      <div style="width:44px;height:3px;background:var(--c);margin-top:12px"></div>
+      <div style="margin-top:auto">
+        <div class="hd" style="font-size:112px;line-height:.82;color:var(--c)">{{ remaining }}</div>
+        <div class="hd" style="font-size:23px;margin-top:8px">kcal restantes</div>
+        <div class="mut" style="font-size:14px;margin-top:14px">{{ consumed }} sur {{ target }} kcal consommées · {{ pct }} %</div>
+        <div class="track" style="height:8px;margin-top:16px"><b style="width:{{ pctW }}"></b></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:36px">
+          <sc-for list="{{ macros }}" as="m" hint-placeholder-count="3">
+            <div><div class="mut up">{{ m.name }}</div><div class="hd" style="font-size:24px;margin-top:5px">{{ m.val }}<span class="mut" style="font-size:12px;font-weight:600">{{ m.suf }}</span></div><div class="track" style="height:4px;margin-top:9px"><b style="width:{{ m.w }}"></b></div></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT meals -->
+    <div style="padding:38px 42px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span class="hd" style="font-size:21px">Repas du jour</span>
+        <button class="addlnk" style="margin-top:0" onClick="{{ copyYesterday }}"><i data-lucide="copy" width="14" height="14"></i>Copier la veille</button>
+      </div>
+
+      <sc-for list="{{ meals }}" as="meal" hint-placeholder-count="4">
+        <div class="mealsec">
+          <div style="display:flex;align-items:baseline;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:11px">
+              <span style="width:9px;height:9px;background:{{ meal.dot }};flex:none"></span>
+              <span class="hd" style="font-size:19px">{{ meal.name }}</span>
+              <span class="mut up">{{ meal.when }}</span>
+            </div>
+            <span class="hd" style="font-size:15px">{{ meal.kcal }} kcal</span>
+          </div>
+          <div style="margin-top:8px">
+            <sc-for list="{{ meal.foods }}" as="f" hint-placeholder-count="2">
+              <div class="food">
+                <span style="font-size:14px;font-weight:600">{{ f.name }}</span>
+                <span style="display:flex;align-items:center;gap:12px">
+                  <button class="qtybtn" onClick="{{ f.dec }}">–</button>
+                  <span class="mut" style="font-size:12.5px;min-width:96px;text-align:right">{{ f.qtyLabel }} · {{ f.kcal }} kcal</span>
+                  <button class="qtybtn" onClick="{{ f.inc }}">+</button>
+                  <button class="icobtn" onClick="{{ f.remove }}"><i data-lucide="x" width="15" height="15"></i></button>
+                </span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ meal.empty }}" hint-placeholder-val="{{ false }}">
+              <div class="mut" style="font-size:13px;padding:9px 0;border-top:1px solid var(--color-divider)">À compléter.</div>
+            </sc-if>
+          </div>
+          <button class="addlnk" onClick="{{ meal.add }}"><i data-lucide="plus" width="14" height="14"></i>Ajouter à {{ meal.name }}</button>
+        </div>
+      </sc-for>
+
+      <div class="mealsec" style="border-bottom:2px solid var(--color-divider);display:flex;align-items:baseline;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:11px"><i data-lucide="waves" width="18" height="18" style="color:var(--c)"></i><span class="hd" style="font-size:19px">Sport</span><span class="mut" style="font-size:13px">Natation · 45 min</span></div>
+        <span class="hd" style="font-size:15px">536 kcal</span>
+      </div>
+      <button class="addlnk"><i data-lucide="plus" width="15" height="15"></i>Ajouter du sport</button>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isGraph }}" hint-placeholder-val="{{ false }}">
+  <div style="padding:40px 42px">
+    <div style="font-family:'Archivo',sans-serif;font-weight:800;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--c)">Statistiques</div>
+    <div style="width:44px;height:3px;background:var(--c);margin-top:12px"></div>
+
+    <!-- controls -->
+    <div style="display:flex;flex-wrap:wrap;gap:26px;align-items:flex-end;justify-content:space-between;margin-top:22px;padding-bottom:22px;border-bottom:2px solid var(--color-divider)">
+      <div>
+        <div class="mut up" style="margin-bottom:8px">Mesure</div>
+        <div style="display:flex;border:1px solid var(--color-divider)">
+          <sc-for list="{{ metrics }}" as="m" hint-placeholder-count="4">
+            <button class="seg" data-on="{{ m.on }}" onClick="{{ m.go }}">{{ m.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div>
+        <div class="mut up" style="margin-bottom:8px">Période</div>
+        <div style="display:flex;border:1px solid var(--color-divider)">
+          <sc-for list="{{ grans }}" as="g" hint-placeholder-count="2">
+            <button class="seg" data-on="{{ g.on }}" onClick="{{ g.go }}">{{ g.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- headline -->
+    <div style="display:flex;flex-wrap:wrap;gap:46px;align-items:flex-end;margin-top:26px">
+      <div>
+        <div class="mut up">{{ chart.leadLabel }}</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px"><span class="hd" style="font-size:64px;line-height:.85;color:var(--c)">{{ chart.leadValue }}</span><span class="mut hd" style="font-size:18px">{{ chart.leadUnit }}</span></div>
+      </div>
+      <div style="display:flex;gap:34px">
+        <sc-for list="{{ chart.stats }}" as="s" hint-placeholder-count="2">
+          <div><div class="mut up">{{ s.label }}</div><div class="hd" style="font-size:22px;margin-top:5px;color:{{ s.color }}">{{ s.value }}</div></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- chart -->
+    <div style="margin-top:30px;position:relative;height:320px;border-left:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider)">
+      <!-- reference line -->
+      <sc-if value="{{ chart.hasRef }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;left:0;right:0;bottom:{{ chart.refBottom }};border-top:2px dashed var(--c);pointer-events:none">
+          <span style="position:absolute;right:0;top:-18px;font-size:11px;font-weight:700;color:var(--c);background:var(--color-bg);padding:0 4px">{{ chart.refLabel }}</span>
+        </div>
+      </sc-if>
+
+      <!-- bars -->
+      <sc-if value="{{ chart.isBars }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:{{ chart.barGap }};padding:0 6px">
+          <sc-for list="{{ chart.bars }}" as="b" hint-placeholder-count="7">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+              <div style="font-size:11px;font-weight:700;color:var(--color-text);margin-bottom:5px">{{ b.top }}</div>
+              <div style="width:100%;max-width:46px;height:{{ b.h }};background:{{ b.fill }}"></div>
+              <div class="mut" style="font-size:11px;margin-top:7px">{{ b.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- line (poids) -->
+      <sc-if value="{{ chart.isLine }}" hint-placeholder-val="{{ false }}">
+        <svg viewBox="0 0 700 320" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+          <polyline points="{{ chart.linePts }}" fill="none" stroke="var(--c)" stroke-width="2.5" vector-effect="non-scaling-stroke"></polyline>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;justify-content:space-between;align-items:flex-end;padding:0 6px;pointer-events:none">
+          <sc-for list="{{ chart.lineLabels }}" as="l" hint-placeholder-count="7">
+            <div class="mut" style="font-size:11px">{{ l }}</div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+    <div class="mut" style="font-size:12.5px;margin-top:18px;max-width:640px;text-wrap:pretty">{{ chart.note }}</div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
+  <div style="padding:80px 42px;text-align:center">
+    <div class="hd" style="font-size:22px">{{ otherLabel }}</div>
+    <div class="mut" style="font-size:14px;margin-top:8px">Écran à redessiner dans une prochaine session.</div>
+  </div>
+  </sc-if>
+</div>
+
+<sc-if value="{{ picker }}" hint-placeholder-val="{{ false }}">
+  <div class="backdrop" onClick="{{ closePicker }}">
+    <div class="modal" onClick="{{ stop }}">
+      <div style="padding:18px 20px;border-bottom:2px solid var(--color-text);display:flex;align-items:center;justify-content:between;gap:12px">
+        <div style="flex:1"><div class="up mut">Ajouter à</div><div class="hd" style="font-size:19px;margin-top:2px">{{ pickerMeal }}</div></div>
+        <button class="icobtn" onClick="{{ closePicker }}"><i data-lucide="x" width="20" height="20"></i></button>
+      </div>
+      <div style="padding:16px 20px">
+        <input class="searchinp" placeholder="Rechercher un aliment…" value="{{ query }}" onInput="{{ onQuery }}" />
+        <div style="max-height:340px;overflow:auto;margin-top:4px">
+          <sc-for list="{{ results }}" as="r" hint-placeholder-count="6">
+            <div class="catrow" onClick="{{ r.pick }}">
+              <div><div style="font-size:14px;font-weight:600">{{ r.name }}</div><div class="mut" style="font-size:12px;margin-top:1px">{{ r.per }}</div></div>
+              <i data-lucide="plus" width="17" height="17" style="color:var(--c)"></i>
+            </div>
+          </sc-for>
+          <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+            <div class="mut" style="font-size:13px;padding:16px 0">Aucun aliment trouvé.</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1300,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    target: 2174,
+    proteinT: 153, carbT: 238, fatMin: 68,
+    meals: [
+      { name: "Déjeuner", when: "matin", foods: [
+        { name: "Skyr nature", qty: 225, unit: "g", kcalPer100: 63, p: 11, c: 4, f: 0.2 },
+        { name: "Pépites de chocolat", qty: 20, unit: "g", kcalPer100: 500, p: 5, c: 60, f: 30 },
+        { name: "Céréales sans sucre", qty: 20, unit: "g", kcalPer100: 380, p: 10, c: 70, f: 5 },
+        { name: "Son d'avoine (fibres)", qty: 20, unit: "g", kcalPer100: 350, p: 17, c: 50, f: 7 },
+      ]},
+      { name: "Collation", when: "10h · goûter", foods: [
+        { name: "Carotte", qty: 150, unit: "g", kcalPer100: 41, p: 0.9, c: 10, f: 0.2 },
+      ]},
+      { name: "Dîner", when: "midi · école", foods: [
+        { name: "Salami Spianata Romana · Lidl", qty: 35, unit: "g", kcalPer100: 363, p: 26, c: 1, f: 28 },
+        { name: "Baguette Exquise · Delhaize", qty: 180, unit: "g", kcalPer100: 260, p: 9, c: 52, f: 2 },
+      ]},
+      { name: "Souper", when: "soir", foods: [] },
+    ],
+    catalog: [
+      { name: "Skyr nature", kcalPer100: 63, p: 11, c: 4, f: 0.2 },
+      { name: "Blanc de poulet", kcalPer100: 121, p: 26, c: 0, f: 2 },
+      { name: "Riz basmati cuit", kcalPer100: 130, p: 2.7, c: 28, f: 0.3 },
+      { name: "Œuf entier", kcalPer100: 143, p: 13, c: 1, f: 10 },
+      { name: "Banane", kcalPer100: 89, p: 1.1, c: 23, f: 0.3 },
+      { name: "Pomme", kcalPer100: 52, p: 0.3, c: 14, f: 0.2 },
+      { name: "Amandes", kcalPer100: 579, p: 21, c: 22, f: 50 },
+      { name: "Pâtes complètes cuites", kcalPer100: 124, p: 5, c: 25, f: 1 },
+      { name: "Saumon", kcalPer100: 208, p: 20, c: 0, f: 13 },
+      { name: "Fromage blanc 0%", kcalPer100: 47, p: 8, c: 4, f: 0.2 },
+      { name: "Avocat", kcalPer100: 160, p: 2, c: 9, f: 15 },
+      { name: "Pain complet", kcalPer100: 247, p: 9, c: 41, f: 3 },
+      { name: "Thon au naturel", kcalPer100: 116, p: 26, c: 0, f: 1 },
+      { name: "Yaourt grec", kcalPer100: 97, p: 9, c: 4, f: 5 },
+      { name: "Flocons d'avoine", kcalPer100: 375, p: 13, c: 60, f: 7 },
+      { name: "Brocoli", kcalPer100: 34, p: 2.8, c: 7, f: 0.4 },
+    ],
+    picker: false, pickerMealIdx: null, query: "",
+    screen: "agenda", metric: "calories", gran: "semaine",
+    // Données d'exemple (7 derniers jours / 6 dernières semaines)
+    hist: {
+      semaine: {
+        labels: ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+        calories: [1980, 2240, 1760, 2090, 2310, 1044, 1890],
+        sportKcal: [0, 420, 0, 536, 0, 536, 300],
+        poids: [86.0, 85.8, 85.9, 85.6, 85.5, 85.3, 85.2],
+      },
+      mois: {
+        labels: ["S-5", "S-4", "S-3", "S-2", "S-1", "S0"],
+        calories: [2120, 2040, 1980, 1910, 1875, 1830],
+        sportKcal: [1200, 1560, 980, 1740, 1620, 1792],
+        poids: [87.4, 87.0, 86.6, 86.1, 85.6, 85.2],
+      },
+    },
+  };
+
+  foodKcal(f) { return Math.round(f.kcalPer100 * f.qty / 100); }
+  mealKcal(m) { return m.foods.reduce((s, f) => s + this.foodKcal(f), 0); }
+  totalKcal() { return this.state.meals.reduce((s, m) => s + this.mealKcal(m), 0); }
+  totalMacro(k) { return Math.round(this.state.meals.reduce((s, m) => s + m.foods.reduce((a, f) => a + f[k] * f.qty / 100, 0), 0)); }
+
+  setFoods(fn) { this.setState(s => { const meals = s.meals.map(m => ({ ...m, foods: m.foods.map(f => ({ ...f })) })); fn(meals); return { meals }; }); }
+
+  changeQty(mi, fi, delta) { this.setFoods(meals => { const f = meals[mi].foods[fi]; f.qty = Math.max(1, f.qty + delta); }); }
+  removeFood(mi, fi) { this.setFoods(meals => { meals[mi].foods.splice(fi, 1); }); }
+  copyYesterday = () => { this.setFoods(meals => { const dej = meals[0]; if (!dej.foods.some(f => f.name === "Café au lait")) dej.foods.push({ name: "Café au lait", qty: 200, unit: "ml", kcalPer100: 45, p: 3, c: 5, f: 1.5 }); }); };
+  openPicker(mi) { this.setState({ picker: true, pickerMealIdx: mi, query: "" }); }
+  closePicker = () => this.setState({ picker: false });
+  onQuery = (e) => this.setState({ query: e.target.value });
+  pickFood(item) { const mi = this.state.pickerMealIdx; this.setFoods(meals => { meals[mi].foods.push({ ...item, qty: 100, unit: "g" }); }); this.setState({ picker: false }); }
+
+  componentDidMount() { this._icons(); }
+  componentDidUpdate() { this._icons(); }
+  _icons() { let t = 0; const run = () => { if (window.lucide?.createIcons) { try { window.lucide.createIcons(); } catch (e) {} } else if (t++ < 40) setTimeout(run, 120); }; run(); }
+
+  buildChart() {
+    const s = this.state;
+    const d = s.hist[s.gran];
+    const isWeek = s.gran === "semaine";
+    const net = d.calories.map((c, i) => c - d.sportKcal[i]);
+    const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+    const mk = (vals, ref, unit, fill, leadLabel, note, stats) => {
+      const max = Math.max(ref || 0, ...vals) * 1.12;
+      return {
+        isBars: true, isLine: false, barGap: isWeek ? "8px" : "12px",
+        bars: vals.map((v, i) => ({ top: v, h: Math.round(v / max * 100) + "%", fill, label: d.labels[i] })),
+        hasRef: ref != null, refBottom: Math.round((ref || 0) / max * 100) + "%", refLabel: "Cible " + ref,
+        leadLabel, leadValue: avg(vals), leadUnit: unit, stats: stats || [], note,
+      };
+    };
+    if (s.metric === "calories")
+      return mk(d.calories, s.target, "kcal / j", "var(--c)", "Moyenne mangée",
+        "Chaque barre = calories consommées ce jour. La ligne pointillée est ta cible (" + s.target + " kcal). En dessous = déficit.",
+        [{ label: "Cible", value: s.target, color: "var(--color-text)" }, { label: "Jours sous cible", value: d.calories.filter(c => c <= s.target).length + "/" + d.calories.length, color: "var(--c)" }]);
+    if (s.metric === "net")
+      return mk(net, s.target, "kcal net", "var(--c-700)", "Moyenne nette",
+        "Net = mangé − dépensé par le sport. C'est ce qui pilote réellement la balance.",
+        [{ label: "Sport moyen", value: "−" + avg(d.sportKcal) + " kcal", color: "var(--c)" }]);
+    if (s.metric === "sport")
+      return mk(d.sportKcal, null, "kcal", "var(--c)", "Dépense moyenne",
+        "Calories brûlées par le sport. Le sport creuse ton déficit — il ne se « re-mange » pas.",
+        [{ label: "Total période", value: d.sportKcal.reduce((a, b) => a + b, 0) + " kcal", color: "var(--color-text)" }]);
+    // poids (line)
+    const vals = d.poids, obj = 80;
+    const min = Math.min(obj, ...vals) - 0.6, max = Math.max(...vals) + 0.4, rng = max - min || 1;
+    const n = vals.length, W = 700, H = 320;
+    const pts = vals.map((v, i) => (i / (n - 1) * W).toFixed(1) + "," + ((1 - (v - min) / rng) * H).toFixed(1)).join(" ");
+    const perWeek = ((vals[n - 1] - vals[0]) / (n - 1) * (isWeek ? 1 : 1)).toFixed(2);
+    return {
+      isBars: false, isLine: true, linePts: pts, lineLabels: d.labels,
+      hasRef: true, refBottom: Math.round((obj - min) / rng * 100) + "%", refLabel: "Objectif " + obj + " kg",
+      leadLabel: "Poids actuel", leadValue: vals[n - 1].toFixed(1), leadUnit: "kg",
+      note: "Courbe de poids sur la période. La ligne pointillée est ton objectif (" + obj + " kg).",
+      stats: [
+        { label: "Depuis le début", value: (vals[n - 1] - vals[0] <= 0 ? "" : "+") + (vals[n - 1] - vals[0]).toFixed(1) + " kg", color: vals[n - 1] - vals[0] <= 0 ? "#2C6E49" : "#C0562B" },
+        { label: isWeek ? "Par jour" : "Par semaine", value: (perWeek <= 0 ? "" : "+") + perWeek + " kg", color: "var(--color-text)" },
+      ],
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const consumed = this.totalKcal();
+    const remaining = s.target - consumed;
+    const pct = Math.round(consumed / s.target * 100);
+    const prot = this.totalMacro("p"), carb = this.totalMacro("c"), fat = this.totalMacro("f");
+    const dots = ["var(--c)", "var(--c)", "var(--c)", "var(--color-divider)"];
+    const q = s.query.trim().toLowerCase();
+    const results = s.catalog.filter(it => it.name.toLowerCase().includes(q)).map(it => ({
+      name: it.name, per: it.kcalPer100 + " kcal / 100 g", pick: () => this.pickFood(it),
+    }));
+    const tabDefs = [["agenda", "Agenda"], ["semaine", "Semaine"], ["liste", "Liste"], ["graphique", "Graphique"], ["profil", "Profil"]];
+    const metricDefs = [["calories", "Calories"], ["net", "Net"], ["poids", "Poids"], ["sport", "Sport"]];
+    const granDefs = [["semaine", "Semaine"], ["mois", "Mois"]];
+    return {
+      dateLabel: "Samedi 9 août 2026",
+      tabs: tabDefs.map(([k, label]) => ({ label, on: s.screen === k, go: () => this.setState({ screen: k }) })),
+      isAgenda: s.screen === "agenda", isGraph: s.screen === "graphique",
+      isOther: !["agenda", "graphique"].includes(s.screen),
+      otherLabel: (tabDefs.find(([k]) => k === s.screen) || [null, ""])[1],
+      metrics: metricDefs.map(([k, label]) => ({ label, on: s.metric === k, go: () => this.setState({ metric: k }) })),
+      grans: granDefs.map(([k, label]) => ({ label, on: s.gran === k, go: () => this.setState({ gran: k }) })),
+      chart: this.buildChart(),
+      target: s.target, consumed, remaining,
+      pct, pctW: Math.min(100, pct) + "%",
+      macros: [
+        { name: "Protéines", val: prot, suf: "/" + s.proteinT + "g", w: Math.min(100, Math.round(prot / s.proteinT * 100)) + "%" },
+        { name: "Glucides", val: carb, suf: "/" + s.carbT + "g", w: Math.min(100, Math.round(carb / s.carbT * 100)) + "%" },
+        { name: "Lipides", val: fat, suf: " g", w: Math.min(100, Math.round(fat / s.fatMin * 100)) + "%" },
+      ],
+      meals: s.meals.map((m, mi) => ({
+        name: m.name, when: m.when, kcal: this.mealKcal(m), dot: dots[mi] || "var(--c)", empty: m.foods.length === 0,
+        add: () => this.openPicker(mi),
+        foods: m.foods.map((f, fi) => ({
+          name: f.name, qtyLabel: f.qty + " " + f.unit, kcal: this.foodKcal(f),
+          inc: () => this.changeQty(mi, fi, f.unit === "g" || f.unit === "ml" ? 10 : 1),
+          dec: () => this.changeQty(mi, fi, f.unit === "g" || f.unit === "ml" ? -10 : -1),
+          remove: () => this.removeFood(mi, fi),
+        })),
+      })),
+      copyYesterday: this.copyYesterday,
+      picker: s.picker, pickerMeal: s.pickerMealIdx != null ? s.meals[s.pickerMealIdx].name : "",
+      closePicker: this.closePicker, stop: (e) => e.stopPropagation(),
+      query: s.query, onQuery: this.onQuery, results, noResults: results.length === 0,
+    };
+  }
+}
+</script>
+</body>
+</html>
