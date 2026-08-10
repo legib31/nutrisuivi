@@ -491,6 +491,26 @@ const PORT = {
   whey: [{ l: "1 dose", g: 30 }],
   barre_prot: [{ l: "1 barre", g: 50 }],
   noix_pecan: [{ l: "1 poignée", g: 25 }],
+  lasagne: [{ l: "1 part", g: 250 }, { l: "grosse part", g: 350 }],
+  quiche_lorraine: [{ l: "1 part", g: 150 }],
+  paella: [{ l: "1 assiette", g: 300 }],
+  chili_carne: [{ l: "1 assiette", g: 300 }],
+  couscous_boeuf: [{ l: "1 assiette", g: 350 }],
+  spaghetti_bolo: [{ l: "1 assiette", g: 300 }],
+  carbonara: [{ l: "1 assiette", g: 300 }],
+  risotto: [{ l: "1 assiette", g: 300 }],
+  soupe_legumes: [{ l: "1 bol", g: 300 }],
+  waterzooi: [{ l: "1 assiette", g: 350 }],
+  moules_frites: [{ l: "1 portion", g: 400 }],
+  boulettes_sauce: [{ l: "1 portion", g: 250 }],
+  vol_au_vent: [{ l: "1 portion", g: 300 }],
+  stoemp: [{ l: "1 portion", g: 250 }],
+  gratin_dauphinois: [{ l: "1 portion", g: 200 }],
+  couscous: [{ l: "1 portion", g: 200 }],
+  wrap: [{ l: "1 wrap", g: 180 }],
+  salade_cesar: [{ l: "1 portion", g: 250 }],
+  poke_bowl: [{ l: "1 bowl", g: 400 }],
+  sandwich: [{ l: "1", g: 200 }],
 };
 
 /* --- Sports : MET (kcal/h ≈ MET × poids × 1,05). Valeurs de référence. --- */
@@ -553,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.3";
+const VERSION = "2.4";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1118,21 +1138,39 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
         {grid.map((cell, i) => {
           if (!cell) return <div key={i} style={{ background: "#fff", border: `1px solid ${C.divider}`, aspectRatio: "1", margin: -0.5 }} />;
           const items = diary[cell] || [];
-          const hasMeal = items.length > 0;
+          const mealsDone = new Set(items.map((x) => x.repas));
+          const mainMeals = ["petitdej", "midi", "soir"];
+          const nMain = mainMeals.filter((m) => mealsDone.has(m)).length;
+          const allDone = nMain === 3;
+          const partial = nMain > 0 && !allDone;
           const hasSport = ((sportAll[cell]) || []).length > 0;
           const sel = cell === dateSel;
           const tdy = cell === todayISO();
+          const mealColor = sel ? "#fff" : allDone ? "#2C6E49" : partial ? "#E0912F" : null;
+          const sportColor = sel ? "#fff" : "#235C86";
           return (
             <button key={i} onClick={() => setDateSel(cell)}
               style={{ ...S.calCell, ...(sel ? S.calCellSel : {}), ...(tdy && !sel ? S.calCellToday : {}) }}>
               <span style={{ fontSize: 14, fontWeight: sel ? 700 : 500 }}>{Number(cell.slice(-2))}</span>
-              <span style={{ display: "flex", gap: 2, minHeight: 5, alignItems: "center", justifyContent: "center" }}>
-                {hasMeal && <span style={{ ...S.calDot, background: sel ? "#fff" : C.accent }} />}
-                {hasSport && <span style={{ ...S.calDot, background: sel ? "#fff" : C.accentDark, opacity: sel ? 0.6 : 1 }} />}
+              <span style={{ display: "flex", gap: 3, minHeight: 5, alignItems: "center", justifyContent: "center" }}>
+                {mealColor && <span style={{ ...S.calDot, background: mealColor, opacity: sel ? 0.85 : 1 }} title={allDone ? "Tous les repas complétés" : "Repas partiels"} />}
+                {hasSport && <span style={{ ...S.calDot, background: sportColor, opacity: sel ? 0.6 : 1 }} title="Sport ce jour" />}
               </span>
             </button>
           );
         })}
+      </div>
+      {/* Légende */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12, fontSize: 11, color: C.muted }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, background: "#2C6E49" }} /> Repas complets
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, background: "#E0912F" }} /> Repas partiels
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, background: "#235C86" }} /> Sport
+        </span>
       </div>
     </div>
   );
@@ -1211,6 +1249,35 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
           </div>
         </div>
       )}
+
+      {/* Eau bue — avec dosage ml/L */}
+      <div style={{ marginTop: 22, paddingTop: 16, borderTop: `1px solid ${C.divider}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+          <div>
+            <div style={S.sectionLabel}>EAU BUE</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+              <span style={{ fontSize: 26, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif" }}>
+                {(water * 0.25).toFixed(2).replace(".", ",")}
+              </span>
+              <span style={{ fontSize: 13, color: C.muted }}>L · {water * 250} ml · cible {waterGoal} verres ({waterGoal * 0.25} L)</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={() => onAddWater(-1)}
+              style={{ width: 34, height: 34, border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", color: C.accent, fontSize: 18, borderRadius: 0 }}
+              title="−1 verre (250 ml)">−</button>
+            <button onClick={() => onAddWater(1)}
+              style={{ width: 34, height: 34, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 18, borderRadius: 0 }}
+              title="+1 verre (250 ml)">+</button>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 3, marginTop: 8 }}>
+          {Array.from({ length: Math.max(waterGoal, water) }).map((_, i) => (
+            <div key={i} style={{ flex: 1, height: 8, background: i < water ? C.accent : C.divider }} />
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>1 verre = 250 ml (verre standard)</div>
+      </div>
     </div>
   );
 
@@ -1330,19 +1397,6 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
 
         {/* Mini-barre P/G/L du repas */}
         <MacrosBar p={repasMacros.p} c={repasMacros.c} f={repasMacros.f} />
-
-        {/* Chips ajout rapide */}
-        {recents.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-            {recents.slice(0, 4).map((f) => (
-              <button key={f.id} onClick={() => quickAdd(f, r.id)}
-                title={`Ajouter 100 g de ${f.nom} (${f.kcal} kcal)`}
-                style={{ padding: "5px 10px", border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontSize: 12, color: C.ink, fontFamily: "'Archivo', sans-serif", borderRadius: 0 }}>
-                + {f.nom}
-              </button>
-            ))}
-          </div>
-        )}
 
         <button onClick={() => onAdd(r.id)}
           style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
@@ -2131,11 +2185,13 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
             )}
             {(!nq && (favMeals.length > 0 || recents.length > 0)) && <div style={S.sectionLabel}>Tous les aliments</div>}
             {liste.map((f) => (
-              <button key={f.id} onClick={() => { setSel(f); setQ(f.nom); }} style={S.foodRow}>
+              <button key={f.id} onClick={() => { setSel(f); setQ(f.nom); if (PORT[f.id]) setGrams(PORT[f.id][0].g); }} style={S.foodRow}>
                 <span style={{ ...S.dot, background: GROUPES[f.grp].couleur }} />
                 <span style={{ flex: 1, textAlign: "left" }}>
-                  <span style={{ fontSize: 14, display: "block" }}>{f.nom}</span>
-                  {PORT[f.id] && <span style={{ ...S.miniMuted, fontSize: 11 }}>{PORT[f.id][0].l} ≈ {PORT[f.id][0].g} g</span>}
+                  <span style={{ fontSize: 14, display: "block" }}>
+                    {f.nom}
+                    {PORT[f.id] && <span style={{ color: C.muted, fontWeight: 500, marginLeft: 6 }}>({PORT[f.id][0].l} = {PORT[f.id][0].g} g)</span>}
+                  </span>
                 </span>
                 <span style={S.miniMuted}>{f.kcal} kcal/100g</span>
               </button>
@@ -3633,13 +3689,175 @@ function Legend({ couleur, txt, dash }) {
   );
 }
 const SLIDES = [
-  { ic: "👋", bg: "#EAF1EB", img: "accueil.png", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
-  { ic: "▦", bg: "#EAF1EB", img: "agenda.png", t: "L'agenda", d: "Chaque jour : ta cible du jour, ce que tu as mangé, et ton sport. Touche « + » sur un repas (Déjeuner, Dîner…) pour y ajouter directement, ou « Ajouter sport »." },
-  { ic: "＋", bg: "#EEE8F6", img: "ajouter.png", t: "Ajouter un repas", d: "Quatre façons : la liste officielle (valeurs vérifiées), le code-barres, l'estimation par photo (IA), ou la saisie libre — tu écris ton repas, l'app cherche d'abord dans la liste officielle et n'estime par IA que ce qui manque (bien signalé)." },
-  { ic: "📷", bg: "#EAF1EB", img: "scanner.png", t: "Scanne tes produits", d: "Scanne le code-barres d'un produit du supermarché : l'app va chercher ses valeurs nutritionnelles dans Open Food Facts (base collaborative, produits belges inclus) et te propose une fiche prête à valider. Une fois enregistré, le produit reste dans ta liste — tu ne rescannes plus jamais. Tu peux aussi scanner depuis l'onglet Liste pour construire ton catalogue perso." },
-  { ic: "▤", bg: "#EAF5F6", img: "graphique.png", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois." },
-  { ic: "◇", bg: "#FCF3E6", img: "profil.png", t: "Ton profil", d: "Ta cible se calcule selon ton activité quotidienne (métier) et ta fréquence de sport. Le sport te récompense par des résultats, pas par de la nourriture. Pèse-toi régulièrement : la balance est le juge." },
+  { key: "welcome", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
+  { key: "agenda", t: "L'agenda du jour", d: "Chaque jour : ta cible en gros chiffre, tes 4 repas (Déjeuner, Collation, Dîner, Souper) et ton sport. Une jauge sous ta cible te dit visuellement où tu en es." },
+  { key: "add", t: "Ajouter un repas — 4 façons", d: "Liste officielle (valeurs vérifiées), code-barres, estimation par photo (IA), ou saisie libre. Les portions courantes s'affichent en un tap : « 1 pot = 150 g », « 1 part = 250 g »." },
+  { key: "scan", t: "Scanne tes produits", d: "Scan du code-barres → Open Food Facts (base collaborative, produits belges inclus). Le produit trouvé rejoint ta liste pour toujours — tu ne rescannes jamais deux fois. Marche aussi depuis l'onglet Liste pour bâtir ton catalogue perso." },
+  { key: "graph", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois. Ligne pointillée = ta cible." },
+  { key: "profil", t: "Ton profil", d: "Ta cible se calcule selon ton activité quotidienne (métier) et ta fréquence de sport. Le sport te récompense par des résultats, pas par de la nourriture. Pèse-toi régulièrement : la balance est le juge." },
 ];
+
+/* Mini-mockups animés SVG représentant chaque écran de l'app. */
+function SlideVisual({ slideKey }) {
+  const accent = "#235C86", ink = "#201E1D", bg = "#F3F2F2", divider = "rgba(32,30,29,.14)", muted = "rgba(32,30,29,.52)";
+  const W = 320, H = 200;
+  const styleAnim = {
+    "@keyframes slideJauge": "0%{width:0}100%{width:60%}",
+    "@keyframes fadeUp": "0%{opacity:0;transform:translateY(6px)}100%{opacity:1;transform:translateY(0)}",
+  };
+  const wrap = (children) => (
+    <div style={{ marginTop: 22, background: bg, padding: 16, border: `2px solid ${divider}` }}>
+      <style>{`
+        @keyframes ns-slide-jauge { from { width: 0 } to { width: 66% } }
+        @keyframes ns-fade-up { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+        @keyframes ns-bar-grow { from { height: 0 } to { height: var(--h) } }
+        @keyframes ns-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
+        @keyframes ns-scan-line { 0% { top: 15% } 50% { top: 85% } 100% { top: 15% } }
+      `}</style>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block", fontFamily: "'Archivo', sans-serif" }}>
+        {children}
+      </svg>
+    </div>
+  );
+
+  if (slideKey === "welcome") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x={W/2} y="70" textAnchor="middle" fontSize="24" fontWeight="800" fill={ink} letterSpacing="-0.02em">NutriSuivi</text>
+        <rect x={W/2 - 22} y="82" width="44" height="3" fill={accent} />
+        <text x={W/2} y="115" textAnchor="middle" fontSize="11" fill={muted} letterSpacing="0.14em">CARNET NUTRITIONNEL</text>
+        <g style={{ animation: "ns-fade-up 1.2s ease-out" }}>
+          <text x={W/2} y="155" textAnchor="middle" fontSize="42" fontWeight="800" fill={accent} letterSpacing="-0.02em">1247</text>
+          <text x={W/2} y="175" textAnchor="middle" fontSize="10" fill={muted}>kcal restantes</text>
+        </g>
+      </>
+    );
+  }
+
+  if (slideKey === "agenda") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        {/* Kicker */}
+        <text x="16" y="24" fontSize="9" fontWeight="700" fill={accent} letterSpacing="0.14em">AUJOURD'HUI</text>
+        <rect x="16" y="28" width="30" height="2" fill={accent} />
+        {/* Big number */}
+        <text x="16" y="70" fontSize="36" fontWeight="800" fill={accent} letterSpacing="-0.02em">1247</text>
+        <text x="16" y="86" fontSize="9" fill={muted}>kcal restantes · 47%</text>
+        {/* Jauge animée */}
+        <rect x="16" y="98" width="240" height="4" fill={divider} />
+        <rect x="16" y="98" height="4" fill={accent} style={{ animation: "ns-slide-jauge 1.6s ease-out forwards", width: 0 }} />
+        {/* Meals */}
+        {[{ y: 122, l: "Déjeuner", k: "388" }, { y: 144, l: "Collation", k: "62" }, { y: 166, l: "Dîner", k: "540" }].map((r, i) => (
+          <g key={i} style={{ animation: `ns-fade-up 0.5s ease-out ${0.2 + i * 0.15}s backwards` }}>
+            <rect x="16" y={r.y} width="6" height="6" fill={accent} />
+            <text x="30" y={r.y + 6} fontSize="11" fontWeight="700" fill={ink}>{r.l}</text>
+            <text x="256" y={r.y + 6} textAnchor="end" fontSize="11" fontWeight="700" fill={ink}>{r.k} kcal</text>
+            <line x1="16" y1={r.y + 12} x2="256" y2={r.y + 12} stroke={divider} />
+          </g>
+        ))}
+      </>
+    );
+  }
+
+  if (slideKey === "add") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x="16" y="24" fontSize="12" fontWeight="800" fill={ink}>Ajouter · Skyr nature</text>
+        <rect x="16" y="34" width="200" height="26" fill={bg} stroke={divider} />
+        <text x="24" y="52" fontSize="10" fill={muted}>Rechercher un aliment…</text>
+        {/* Rows */}
+        {[
+          { y: 76, n: "Skyr nature", p: "(1 pot = 150 g)" },
+          { y: 102, n: "Pomme", p: "(1 moyenne = 150 g)" },
+          { y: 128, n: "Lasagne", p: "(1 part = 250 g)" },
+          { y: 154, n: "Pain complet", p: "(1 tranche = 40 g)" },
+        ].map((r, i) => (
+          <g key={i} style={{ animation: `ns-fade-up 0.5s ease-out ${0.1 + i * 0.12}s backwards` }}>
+            <rect x="16" y={r.y - 2} width="6" height="6" fill={accent} />
+            <text x="30" y={r.y + 4} fontSize="11" fontWeight="700" fill={ink}>{r.n}</text>
+            <text x={30 + r.n.length * 6.2} y={r.y + 4} fontSize="10" fill={muted}>{r.p}</text>
+            <line x1="16" y1={r.y + 14} x2="304" y2={r.y + 14} stroke={divider} />
+          </g>
+        ))}
+      </>
+    );
+  }
+
+  if (slideKey === "scan") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill={ink} />
+        {/* Viewfinder */}
+        <rect x="60" y="30" width="200" height="140" fill="none" stroke="#fff" strokeWidth="2" opacity="0.9" />
+        <rect x="72" y="45" width="176" height="110" fill="none" stroke="#fff" strokeWidth="1" opacity="0.4" />
+        {/* Barcode */}
+        <g transform="translate(90, 80)" style={{ animation: "ns-pulse 2s ease-in-out infinite" }}>
+          {[0, 5, 8, 14, 22, 28, 32, 42, 48, 56, 62, 70, 78, 86, 94, 102, 110, 118, 126, 134].map((x, i) => (
+            <rect key={i} x={x} y="0" width={i % 3 === 0 ? 3 : i % 2 === 0 ? 2 : 1} height="40" fill="#fff" />
+          ))}
+        </g>
+        {/* Scan line */}
+        <rect x="60" y="0" width="200" height="2" fill={accent} style={{ animation: "ns-scan-line 2.4s ease-in-out infinite", position: "relative" }} />
+        <text x={W/2} y="190" textAnchor="middle" fontSize="10" fill="#fff" opacity="0.7">Vise le code-barres</text>
+      </>
+    );
+  }
+
+  if (slideKey === "graph") {
+    const bars = [{ h: 60, v: "1980" }, { h: 92, v: "2240", over: true }, { h: 42, v: "1760" }, { h: 70, v: "2090" }, { h: 88, v: "2310", over: true }, { h: 56, v: "1890" }, { h: 48, v: "1720" }];
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x="16" y="20" fontSize="9" fontWeight="700" fill={accent} letterSpacing="0.14em">CALORIES · 7 J</text>
+        <rect x="16" y="24" width="30" height="2" fill={accent} />
+        <text x="16" y="52" fontSize="24" fontWeight="800" fill={accent} letterSpacing="-0.02em">1990</text>
+        <text x="70" y="52" fontSize="10" fill={muted}>kcal / j</text>
+        {/* Axes */}
+        <line x1="16" y1="170" x2={W-16} y2="170" stroke={divider} strokeWidth="1" />
+        {/* Bars */}
+        {bars.map((b, i) => (
+          <rect key={i} x={30 + i * 40} y={170 - b.h} width="24" height={b.h}
+            fill={b.over ? "#C0562B" : accent}
+            style={{ transformOrigin: `${30 + i * 40 + 12}px 170px`, animation: `ns-bar-grow 1s ease-out ${0.15 + i * 0.1}s backwards`, "--h": `${b.h}px` }} />
+        ))}
+        {/* Cible line */}
+        <line x1="16" y1="90" x2={W-16} y2="90" stroke={accent} strokeWidth="1.2" strokeDasharray="4 3" />
+        <text x={W-16} y="86" textAnchor="end" fontSize="9" fontWeight="700" fill={accent}>Cible 2174</text>
+      </>
+    );
+  }
+
+  if (slideKey === "profil") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x="16" y="24" fontSize="10" fontWeight="700" fill={muted} letterSpacing="0.12em">TA CIBLE</text>
+        <text x="16" y="60" fontSize="36" fontWeight="800" fill={accent} letterSpacing="-0.02em">2174</text>
+        <text x="130" y="60" fontSize="12" fill={muted}>kcal / jour</text>
+        <line x1="16" y1="80" x2={W-16} y2="80" stroke={divider} strokeWidth="2" />
+        {/* Metrics */}
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.2s backwards" }}>
+          <text x="16" y="106" fontSize="10" fill={muted}>Métabolisme</text>
+          <text x={W-16} y="106" textAnchor="end" fontSize="12" fontWeight="700" fill={ink}>1834</text>
+          <line x1="16" y1="114" x2={W-16} y2="114" stroke={divider} />
+        </g>
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.35s backwards" }}>
+          <text x="16" y="134" fontSize="10" fill={muted}>Maintenance</text>
+          <text x={W-16} y="134" textAnchor="end" fontSize="12" fontWeight="700" fill={ink}>2674</text>
+          <line x1="16" y1="142" x2={W-16} y2="142" stroke={divider} />
+        </g>
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.5s backwards" }}>
+          <text x="16" y="162" fontSize="10" fill={muted}>Déficit / jour</text>
+          <text x={W-16} y="162" textAnchor="end" fontSize="12" fontWeight="700" fill={accent}>−500 kcal</text>
+        </g>
+      </>
+    );
+  }
+  return null;
+}
 function SlideShot({ name }) {
   const [ok, setOk] = useState(true);
   if (!name || !ok) return null;
@@ -3651,27 +3869,30 @@ function Onboarding({ onDone }) {
   const s = SLIDES[i];
   const last = i === SLIDES.length - 1;
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: C.bg, display: "flex", flexDirection: "column", fontFamily: "'Inter',system-ui,sans-serif", color: C.ink }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "16px 18px" }}>
-        <button onClick={onDone} style={{ background: "none", border: "none", color: C.muted, fontSize: 14, cursor: "pointer", fontWeight: 600 }}>Passer</button>
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: C.bg, display: "flex", flexDirection: "column", fontFamily: "'Archivo',system-ui,sans-serif", color: C.ink }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 22px", borderBottom: `2px solid ${C.divider}` }}>
+        <div style={{ ...S.logo, fontSize: 16 }}>NutriSuivi</div>
+        <button onClick={onDone} style={{ background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer", fontWeight: 600, fontFamily: "'Archivo', sans-serif" }}>Passer</button>
       </div>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", padding: "0 32px", maxWidth: 460, margin: "0 auto" }}>
-        <div style={{ width: 92, height: 92, borderRadius: 26, background: s.bg, display: "grid", placeItems: "center", fontSize: 42, marginBottom: 28 }}>{s.ic}</div>
-        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 26, letterSpacing: -0.5 }}>{s.t}</div>
-        <div style={{ fontSize: 16, color: "#3a4a40", marginTop: 14, lineHeight: 1.55 }}>{s.d}</div>
-        <SlideShot name={s.img} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 32px", maxWidth: 480, margin: "0 auto", width: "100%", boxSizing: "border-box" }}>
+        <div style={S.kicker}>ÉTAPE {i + 1} / {SLIDES.length}</div>
+        <div style={S.kickerTrait} />
+        <div style={{ fontFamily: "'Archivo', sans-serif", fontWeight: 800, fontSize: 28, letterSpacing: "-0.02em", color: C.ink, lineHeight: 1.15 }}>{s.t}</div>
+        <div style={{ fontSize: 15, color: C.muted, marginTop: 14, lineHeight: 1.6 }}>{s.d}</div>
+        <SlideVisual slideKey={s.key} />
       </div>
-      <div style={{ display: "flex", justifyContent: "center", gap: 7, marginBottom: 22 }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "22px 0 14px" }}>
         {SLIDES.map((_, k) => (
-          <span key={k} style={{ width: k === i ? 22 : 7, height: 7, borderRadius: 4, background: k === i ? C.green : "#CFD8CD", transition: "width .2s" }} />
+          <span key={k} style={{ width: k === i ? 22 : 8, height: 4, background: k === i ? C.accent : C.divider, transition: "width .2s" }} />
         ))}
       </div>
-      <div style={{ padding: "0 24px 30px", maxWidth: 460, margin: "0 auto", width: "100%", boxSizing: "border-box", display: "flex", gap: 10 }}>
+      <div style={{ padding: "0 24px 30px", maxWidth: 480, margin: "0 auto", width: "100%", boxSizing: "border-box", display: "flex", gap: 10 }}>
         {i > 0 && (
-          <button onClick={() => setI(i - 1)} style={{ padding: "15px 20px", borderRadius: 14, border: "1px solid #E1E6DC", background: "#fff", color: C.ink, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>‹</button>
+          <button onClick={() => setI(i - 1)}
+            style={{ padding: "14px 22px", border: `1px solid ${C.divider}`, background: "#fff", color: C.ink, fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif", borderRadius: 0 }}>‹</button>
         )}
         <button onClick={() => (last ? onDone() : setI(i + 1))}
-          style={{ flex: 1, padding: "15px 0", borderRadius: 14, border: "none", background: C.green, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
+          style={{ flex: 1, padding: "14px 0", border: "none", background: C.accent, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Archivo', sans-serif", borderRadius: 0, letterSpacing: "0.02em" }}>
           {last ? "Commencer" : "Suivant"}
         </button>
       </div>
