@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.4";
+const VERSION = "2.5";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -631,6 +631,17 @@ const SPORT_FREQ = {
   f3_4: { label: "3–4× / semaine", b: 0.18 },
   f5_6: { label: "5–6× / semaine", b: 0.26 },
   quotidien: { label: "Tous les jours / intense", b: 0.34 },
+};
+const MOTIVATION = {
+  perte: { label: "Perdre du poids", desc: "réduire ta masse grasse en douceur" },
+  maintien: { label: "Maintenir mon poids", desc: "stabiliser et suivre l'équilibre" },
+  prise: { label: "Prendre du muscle", desc: "surplus léger + protéines" },
+};
+const REGIME = {
+  omnivore: { label: "Omnivore", desc: "tout, sans restriction" },
+  flexi: { label: "Flexitarien", desc: "peu de viande, poisson OK" },
+  vege: { label: "Végétarien", desc: "sans viande ni poisson" },
+  vegan: { label: "Végan", desc: "sans produit animal" },
 };
 const neatF = (p) => (NEAT[p.neat] || NEAT.debout).f;
 const sportB = (p) => (SPORT_FREQ[p.sportFreq] || SPORT_FREQ.f1_2).b;
@@ -1147,7 +1158,7 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
           const sel = cell === dateSel;
           const tdy = cell === todayISO();
           const mealColor = sel ? "#fff" : allDone ? "#2C6E49" : partial ? "#E0912F" : null;
-          const sportColor = sel ? "#fff" : "#235C86";
+          const sportColor = sel ? "#fff" : "#C0562B";
           return (
             <button key={i} onClick={() => setDateSel(cell)}
               style={{ ...S.calCell, ...(sel ? S.calCellSel : {}), ...(tdy && !sel ? S.calCellToday : {}) }}>
@@ -1169,7 +1180,7 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
           <span style={{ width: 8, height: 8, background: "#E0912F" }} /> Repas partiels
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 8, height: 8, background: "#235C86" }} /> Sport
+          <span style={{ width: 8, height: 8, background: "#C0562B" }} /> Sport
         </span>
       </div>
     </div>
@@ -1394,9 +1405,6 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
             </div>
           ))
         )}
-
-        {/* Mini-barre P/G/L du repas */}
-        <MacrosBar p={repasMacros.p} c={repasMacros.c} f={repasMacros.f} />
 
         <button onClick={() => onAdd(r.id)}
           style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
@@ -3330,8 +3338,36 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
     setProfil((p) => ({ ...p, crediterSport: !p.crediterSport }));
   }
 
+  const motivationLabel = MOTIVATION[profil.motivation || "perte"]?.label || "Perdre du poids";
+  const regimeLabel = REGIME[profil.regime || "omnivore"]?.label || "Omnivore";
+  const neatLabel = NEAT[profil.neat || "debout"]?.label || "Souvent debout";
+  const sportLabel = SPORT_FREQ[profil.sportFreq || "f1_2"]?.label || "1–2× / semaine";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Carte synthèse — profil scannable en un coup d'œil */}
+      <div style={S.cardFramed}>
+        <div style={{ ...S.kicker }}>TON PROFIL EN SYNTHÈSE</div>
+        <div style={S.kickerTrait} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 12 }}>
+          {[
+            ["Poids actuel", `${profil.poids} kg`, C.accent],
+            ["Objectif", `${profil.objectif} kg`, C.accent],
+            ["Taille · Âge", `${profil.taille} cm · ${profil.age} ans`, C.ink],
+            ["Sexe", profil.sexe === "homme" ? "Homme" : "Femme", C.ink],
+            ["Activité quotidienne", neatLabel, C.ink],
+            ["Sport", sportLabel, C.ink],
+            ["Motivation", motivationLabel, C.accent],
+            ["Régime alimentaire", regimeLabel, C.ink],
+          ].map(([l, v, col]) => (
+            <div key={l}>
+              <div style={{ ...S.sectionLabel, marginBottom: 4, fontSize: 10 }}>{l.toUpperCase()}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: col }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div style={{ ...S.card, background: C.ink, color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>
@@ -3343,6 +3379,39 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
           </div>
         </div>
         <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>Calcul Mifflin-St Jeor — formule clinique.</div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.sectionLabel}>Motivation principale</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {Object.entries(MOTIVATION).map(([k, v]) => (
+            <button key={k} onClick={() => set("motivation")(k)}
+              style={{ ...S.radioRow, alignItems: "flex-start", ...((profil.motivation || "perte") === k ? S.radioOn : {}) }}>
+              <span style={{ textAlign: "left" }}>
+                <span style={{ display: "block" }}>{v.label}</span>
+                <span style={{ ...S.miniMuted, fontSize: 11 }}>{v.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.sectionLabel}>Régime alimentaire</div>
+        <div style={{ ...S.miniMuted, marginBottom: 10, fontSize: 12 }}>
+          Aide à affiner les suggestions de la saisie libre IA et à ordonner tes aliments favoris.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {Object.entries(REGIME).map(([k, v]) => (
+            <button key={k} onClick={() => set("regime")(k)}
+              style={{ ...S.radioRow, alignItems: "flex-start", ...((profil.regime || "omnivore") === k ? S.radioOn : {}) }}>
+              <span style={{ textAlign: "left" }}>
+                <span style={{ display: "block" }}>{v.label}</span>
+                <span style={{ ...S.miniMuted, fontSize: 11 }}>{v.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={S.card}>
@@ -3691,10 +3760,10 @@ function Legend({ couleur, txt, dash }) {
 const SLIDES = [
   { key: "welcome", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
   { key: "agenda", t: "L'agenda du jour", d: "Chaque jour : ta cible en gros chiffre, tes 4 repas (Déjeuner, Collation, Dîner, Souper) et ton sport. Une jauge sous ta cible te dit visuellement où tu en es." },
-  { key: "add", t: "Ajouter un repas — 4 façons", d: "Liste officielle (valeurs vérifiées), code-barres, estimation par photo (IA), ou saisie libre. Les portions courantes s'affichent en un tap : « 1 pot = 150 g », « 1 part = 250 g »." },
-  { key: "scan", t: "Scanne tes produits", d: "Scan du code-barres → Open Food Facts (base collaborative, produits belges inclus). Le produit trouvé rejoint ta liste pour toujours — tu ne rescannes jamais deux fois. Marche aussi depuis l'onglet Liste pour bâtir ton catalogue perso." },
+  { key: "add", t: "Ajouter un repas — 4 façons", d: "Liste officielle (valeurs vérifiées par CIQUAL — la base nutritionnelle de l'ANSES, agence française de sécurité alimentaire), code-barres, estimation par photo (IA), ou saisie libre. Les portions courantes s'affichent en un tap : « 1 pot = 150 g », « 1 part = 250 g »." },
+  { key: "scan", t: "Le code-barres : LA méthode la plus rapide", d: "Un tap → tu vises le code-barres au dos du produit → l'app va chercher dans Open Food Facts (base collaborative de +3M produits, belges inclus) et te propose une fiche prête à valider en 2 secondes. Le produit reste dans ta liste pour toujours — tu ne le rescannes plus jamais. C'est la méthode la plus fiable et la plus rapide pour tes produits emballés (yaourt, céréales, biscuits, plats préparés…)." },
   { key: "graph", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois. Ligne pointillée = ta cible." },
-  { key: "profil", t: "Ton profil", d: "Ta cible se calcule selon ton activité quotidienne (métier) et ta fréquence de sport. Le sport te récompense par des résultats, pas par de la nourriture. Pèse-toi régulièrement : la balance est le juge." },
+  { key: "profil", t: "Ton profil", d: "Ta cible se calcule à partir de ton profil (poids, taille, âge, activité, sport) — pas d'algorithme mystère. Le sport te récompense par des résultats concrets — physique plus tonique, muscle préservé — plus que par une assiette en plus. Pèse-toi régulièrement pour ajuster : c'est la tendance sur 2-3 semaines qui compte, jamais le chiffre d'un jour." },
 ];
 
 /* Mini-mockups animés SVG représentant chaque écran de l'app. */
@@ -3789,19 +3858,36 @@ function SlideVisual({ slideKey }) {
   if (slideKey === "scan") {
     return wrap(
       <>
-        <rect x="0" y="0" width={W} height={H} fill={ink} />
-        {/* Viewfinder */}
-        <rect x="60" y="30" width="200" height="140" fill="none" stroke="#fff" strokeWidth="2" opacity="0.9" />
-        <rect x="72" y="45" width="176" height="110" fill="none" stroke="#fff" strokeWidth="1" opacity="0.4" />
-        {/* Barcode */}
-        <g transform="translate(90, 80)" style={{ animation: "ns-pulse 2s ease-in-out infinite" }}>
-          {[0, 5, 8, 14, 22, 28, 32, 42, 48, 56, 62, 70, 78, 86, 94, 102, 110, 118, 126, 134].map((x, i) => (
-            <rect key={i} x={x} y="0" width={i % 3 === 0 ? 3 : i % 2 === 0 ? 2 : 1} height="40" fill="#fff" />
+        {/* Bloc caméra à gauche */}
+        <rect x="0" y="0" width="160" height={H} fill={ink} />
+        <rect x="20" y="30" width="120" height="140" fill="none" stroke="#fff" strokeWidth="2" opacity="0.9" />
+        <rect x="30" y="50" width="100" height="100" fill="none" stroke="#fff" strokeWidth="1" opacity="0.4" />
+        <g transform="translate(45, 85)" style={{ animation: "ns-pulse 2s ease-in-out infinite" }}>
+          {[0, 5, 8, 14, 22, 28, 32, 42, 48, 56, 62, 70].map((x, i) => (
+            <rect key={i} x={x} y="0" width={i % 3 === 0 ? 3 : i % 2 === 0 ? 2 : 1} height="30" fill="#fff" />
           ))}
         </g>
-        {/* Scan line */}
-        <rect x="60" y="0" width="200" height="2" fill={accent} style={{ animation: "ns-scan-line 2.4s ease-in-out infinite", position: "relative" }} />
-        <text x={W/2} y="190" textAnchor="middle" fontSize="10" fill="#fff" opacity="0.7">Vise le code-barres</text>
+        <rect x="20" y="0" width="120" height="2" fill={accent}
+          style={{ animation: "ns-scan-line 2.4s ease-in-out infinite", position: "relative" }} />
+        <text x="80" y="190" textAnchor="middle" fontSize="9" fill="#fff" opacity="0.7">Vise le code</text>
+
+        {/* Flèche */}
+        <text x="170" y="105" fontSize="16" fontWeight="800" fill={accent}>→</text>
+
+        {/* Fiche produit à droite */}
+        <rect x="190" y="30" width="120" height="140" fill="#fff" stroke={divider} strokeWidth="1.5" />
+        <g style={{ animation: "ns-fade-up 1s ease-out 0.8s backwards" }}>
+          <text x="200" y="50" fontSize="8" fontWeight="700" fill={accent} letterSpacing="0.1em">TROUVÉ</text>
+          <rect x="200" y="54" width="16" height="2" fill={accent} />
+          <text x="200" y="72" fontSize="10" fontWeight="800" fill={ink}>Skyr nature</text>
+          <text x="200" y="84" fontSize="7" fill={muted}>Arla · 150 g</text>
+          <line x1="200" y1="94" x2="300" y2="94" stroke={divider} />
+          <text x="200" y="112" fontSize="20" fontWeight="800" fill={accent} letterSpacing="-0.02em">95</text>
+          <text x="228" y="112" fontSize="8" fill={muted}>kcal</text>
+          <text x="200" y="132" fontSize="8" fill={muted}>P 15 · G 6 · L 0,2</text>
+          <rect x="200" y="146" width="100" height="16" fill={accent} />
+          <text x="250" y="157" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">Ajouter</text>
+        </g>
       </>
     );
   }
@@ -3906,6 +3992,7 @@ function Assistant({ profil, setProfil, onDone }) {
     setProfil((p) => ({
       ...p, sexe: f.sexe, age: Number(f.age) || p.age, taille: Number(f.taille) || p.taille,
       poids: Number(f.poids) || p.poids, objectif: Number(f.objectif) || p.objectif, neat: f.neat, sportFreq: f.sportFreq,
+      motivation: f.motivation || "perte", regime: f.regime || "omnivore",
     }));
     onDone();
   }
@@ -3942,6 +4029,24 @@ function Assistant({ profil, setProfil, onDone }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
           {Object.entries(SPORT_FREQ).map(([k, v]) => (
             <button key={k} onClick={() => up("sportFreq")(k)} style={{ ...S.radioRow, ...((f.sportFreq || "f1_2") === k ? S.radioOn : {}) }}>{v.label}</button>
+          ))}
+        </div>
+
+        <div style={S.sectionLabel}>Motivation principale</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+          {Object.entries(MOTIVATION).map(([k, v]) => (
+            <button key={k} onClick={() => up("motivation")(k)} style={{ ...S.radioRow, alignItems: "flex-start", ...((f.motivation || "perte") === k ? S.radioOn : {}) }}>
+              <span style={{ textAlign: "left" }}><span style={{ display: "block" }}>{v.label}</span><span style={{ ...S.miniMuted, fontSize: 11 }}>{v.desc}</span></span>
+            </button>
+          ))}
+        </div>
+
+        <div style={S.sectionLabel}>Régime alimentaire</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+          {Object.entries(REGIME).map(([k, v]) => (
+            <button key={k} onClick={() => up("regime")(k)} style={{ ...S.radioRow, alignItems: "flex-start", ...((f.regime || "omnivore") === k ? S.radioOn : {}) }}>
+              <span style={{ textAlign: "left" }}><span style={{ display: "block" }}>{v.label}</span><span style={{ ...S.miniMuted, fontSize: 11 }}>{v.desc}</span></span>
+            </button>
           ))}
         </div>
 
