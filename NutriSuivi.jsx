@@ -553,7 +553,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.1";
+const VERSION = "2.3";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -704,6 +704,7 @@ export default function App() {
   const [editData, setEditData] = useState(null);
   const [water, setWater] = useState({});
   const [showSetup, setShowSetup] = useState(false);
+  const [monthReviewSeen, setMonthReviewSeen] = useState("");
 
   const allSports = useMemo(() => [...SPORTS, ...customSports], [customSports]);
 
@@ -729,6 +730,7 @@ export default function App() {
       setDiary(d);
       setShowSetup(!(await sget("nutri:setup_done", false)));
       setShowOnboarding(!(await sget("nutri:onboarding_done", false)));
+      setMonthReviewSeen(await sget("nutri:monthReviewSeen", ""));
       setLoaded(true);
     })();
   }, []);
@@ -918,6 +920,23 @@ export default function App() {
 
   const todayLong = new Date().toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const dateHeader = todayLong.charAt(0).toUpperCase() + todayLong.slice(1);
+  const todayKcal = sommeMacros(diary[todayISO()]).kcal;
+  const todayCredited = profil.crediterSport ? creditedKcal(todayISO(), sport, profil.partSport ?? 60, profil.sportMode ?? "jour") : 0;
+  const todayTarget = cible + todayCredited;
+  const todayPct = todayTarget > 0 ? Math.round((todayKcal / todayTarget) * 100) : 0;
+  const badgeColor = todayPct <= 100 ? C.accent : C.negative;
+
+  const badgeToday = (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", border: `1px solid ${C.divider}` }}
+      title={`${Math.round(todayKcal)} sur ${todayTarget} kcal — clic pour aller à l'Agenda`}
+      onClick={() => setTab("agenda")}>
+      <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, cursor: "pointer" }}>Aujourd'hui</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: badgeColor, letterSpacing: "-0.01em", cursor: "pointer" }}>{todayPct} %</div>
+      <div style={{ width: 60, height: 5, background: C.divider, cursor: "pointer" }}>
+        <div style={{ width: `${Math.min(100, todayPct)}%`, height: "100%", background: badgeColor }} />
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Archivo', system-ui, sans-serif" }}>
@@ -935,8 +954,12 @@ export default function App() {
                 </button>
               ))}
             </nav>
-            <div style={{ fontSize: 13, color: C.muted, textAlign: "right" }}>
-              {dateHeader} · Objectif {profil.objectif} kg
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              {badgeToday}
+              <div style={{ fontSize: 12, color: C.muted, textAlign: "right", lineHeight: 1.4 }}>
+                <div>{dateHeader}</div>
+                <div>Objectif {profil.objectif} kg</div>
+              </div>
             </div>
           </div>
         </header>
@@ -950,6 +973,7 @@ export default function App() {
                 <div style={S.logo}>NutriSuivi</div>
                 <div style={S.sub}>Objectif {profil.objectif} kg · {cible} kcal/jour</div>
               </div>
+              {badgeToday}
             </header>
           )}
 
@@ -958,7 +982,26 @@ export default function App() {
           <Agenda diary={diary} dateSel={dateSel} setDateSel={setDateSel}
             tot={totJour} cible={cible} cibleProt={cibleProt} cibleGluc={cibleGluc} cibleLipMin={cibleLipMin}
             onDel={delEntry} onAdd={(rid) => { if (rid) setAddRepas(rid); setAddOpen(true); }}
-            onEditGrams={editEntry}
+            onEditGrams={editEntry} onAddDirect={addEntry}
+            catalog={catalog} favMeals={favMeals} onAddFavorite={addFavoriteToDay}
+            copyFromDate={(src) => {
+              const items = (diary[src] || []).map((e) => ({ ...e, id: uid() }));
+              if (!items.length) return;
+              setDiary((d) => ({ ...d, [dateSel]: [...(d[dateSel] || []), ...items] }));
+            }}
+            monthReview={(() => {
+              const now = new Date();
+              // Cache si vu ce mois-ci OU si on est avant le 3 du mois (données incomplètes)
+              const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              if (monthReviewSeen === key || now.getDate() < 3) return null;
+              const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+              return monthlyReview(diary, sport, poidsLog, prev.getFullYear(), prev.getMonth());
+            })()}
+            onDismissMonthReview={() => {
+              const now = new Date();
+              const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              setMonthReviewSeen(key); sset("nutri:monthReviewSeen", key);
+            }}
             mealPhotos={mealPhotos} onMealPhoto={setMealPhoto} onClearMealPhoto={clearMealPhoto}
             sportAll={sport} sportEntries={sport[dateSel] || []} onAddSport={() => setSportOpen(true)}
             onDelSport={delSport} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
@@ -1034,7 +1077,7 @@ export default function App() {
 }
 
 /* ============================ AGENDA ============================= */
-function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
+function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, onAddDirect, catalog, favMeals, onAddFavorite, copyFromDate, monthReview, onDismissMonthReview, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(dateSel); return { y: d.getFullYear(), m: d.getMonth() }; });
   const sportKcal = sommeSport(sportEntries);
   const credited = crediterSport ? creditedKcal(dateSel, sportAll, partSport, sportMode) : 0;
@@ -1098,6 +1141,8 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
   const pct = Math.min(100, Math.round((tot.kcal / cibleJour) * 100));
   const kcalConsommees = Math.round(tot.kcal);
   const kcalRestantes = reste;
+  const streak = useMemo(() => streakUnderTarget(diary, cible), [diary, cible]);
+  const recents = useMemo(() => recentUniqueFoods(diary, catalog || [], 4), [diary, catalog]);
 
   const Macro = ({ label, v, cible, min, unit }) => {
     const val = Math.round(v);
@@ -1156,6 +1201,49 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
           <span>SUCRES <b style={{ color: C.ink, marginLeft: 4 }}>{Math.round(tot.suc)} g</b></span>
         </div>
       )}
+
+      {streak > 0 && (
+        <div style={{ marginTop: 22, paddingTop: 16, borderTop: `1px solid ${C.divider}` }}>
+          <div style={S.sectionLabel}>SÉRIE</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
+            <span style={{ fontSize: 26, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif" }}>{streak}</span>
+            <span style={{ fontSize: 12, color: C.muted }}>{streak > 1 ? "jours consécutifs sous la cible (±5 %)" : "jour sous la cible"}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /* --- Bilan mensuel (bannière) --- */
+  const bilanMensuel = monthReview && (
+    <div style={{ ...S.cardFramed, marginBottom: 22, borderColor: C.accent, background: C.accentTint }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ ...S.kicker, color: C.accent }}>BILAN — {monthReview.monthName.toUpperCase()} {monthReview.year}</div>
+          <div style={{ marginTop: 14, display: "flex", gap: 32, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ ...S.sectionLabel, marginBottom: 4 }}>MOY. KCAL / JOUR</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em" }}>{monthReview.avgKcal || "—"}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{monthReview.daysLogged}/{monthReview.nbDays} j loggés</div>
+            </div>
+            {monthReview.kgDelta !== null && (
+              <div>
+                <div style={{ ...S.sectionLabel, marginBottom: 4 }}>POIDS</div>
+                <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", color: monthReview.kgDelta <= 0 ? C.positive : C.negative }}>
+                  {monthReview.kgDelta > 0 ? "+" : ""}{monthReview.kgDelta} kg
+                </div>
+              </div>
+            )}
+            <div>
+              <div style={{ ...S.sectionLabel, marginBottom: 4 }}>SPORT</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em" }}>{monthReview.sessions}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>séances · {monthReview.totalSport} kcal</div>
+            </div>
+          </div>
+        </div>
+        <button onClick={onDismissMonthReview}
+          style={{ ...S.del, flexShrink: 0 }}>×</button>
+      </div>
     </div>
   );
 
@@ -1172,47 +1260,97 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
     if (onEditGrams) onEditGrams(e.id, g);
   }
 
-  /* --- Blocs repas nouveau format --- */
-  const blocRepas = parRepas.map((r, idx) => (
-    <div key={r.id} style={{ paddingTop: idx === 0 ? 0 : 22, borderTop: idx === 0 ? "none" : `2px solid ${C.divider}`, marginTop: idx === 0 ? 0 : 22 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ width: 9, height: 9, background: C.accent, flexShrink: 0 }} />
-          <span style={{ fontSize: 19, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{r.label}</span>
-          <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>{r.h}</span>
+  /* Ajout rapide : ajoute un aliment récent (100 g) directement dans le repas */
+  function quickAdd(food, repas) {
+    if (!onAddDirect) return;
+    const g = 100;
+    onAddDirect({ id: uid(), repas, foodId: food.id, nom: food.nom, grams: g,
+      kcal: (food.kcal || 0), p: (food.p || 0), c: (food.c || 0), f: (food.f || 0),
+      fib: (food.fib || 0), suc: (food.suc || 0) });
+  }
+
+  /* Mini-barre 3 segments P/G/L en kcal (P×4, G×4, L×9) */
+  const MacrosBar = ({ p, c, f }) => {
+    const kp = (p || 0) * 4, kc = (c || 0) * 4, kf = (f || 0) * 9;
+    const tot = kp + kc + kf;
+    if (tot <= 0) return null;
+    const pp = (kp / tot) * 100, pc = (kc / tot) * 100, pf = (kf / tot) * 100;
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: "flex", height: 4, background: C.divider }}>
+          <div style={{ width: `${pp}%`, background: C.accent }} title={`Protéines ${Math.round(kp)} kcal`} />
+          <div style={{ width: `${pc}%`, background: C.accentDark }} title={`Glucides ${Math.round(kc)} kcal`} />
+          <div style={{ width: `${pf}%`, background: C.muted }} title={`Lipides ${Math.round(kf)} kcal`} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Favori</button>}
-          <span style={{ fontSize: 18, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{Math.round(sommeMacros(r.items).kcal)} kcal</span>
+        <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+          <span><span style={{ display: "inline-block", width: 8, height: 8, background: C.accent, marginRight: 4 }} />P {Math.round(pp)}%</span>
+          <span><span style={{ display: "inline-block", width: 8, height: 8, background: C.accentDark, marginRight: 4 }} />G {Math.round(pc)}%</span>
+          <span><span style={{ display: "inline-block", width: 8, height: 8, background: C.muted, marginRight: 4 }} />L {Math.round(pf)}%</span>
         </div>
       </div>
+    );
+  };
 
-      {r.items.length === 0 ? (
-        <div style={{ fontSize: 13, color: C.muted, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>À compléter.</div>
-      ) : (
-        r.items.map((e) => (
-          <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>
-            {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
-            <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: C.ink }}>{e.nom}</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <QtyBtn onClick={() => bump(e, -10)} title="−10 g">−</QtyBtn>
-              <InlineGrams entry={e} onSave={onEditGrams} />
-              <QtyBtn onClick={() => bump(e, +10)} title="+10 g">+</QtyBtn>
-              <button onClick={() => onDel(e.id)} title="Supprimer"
-                style={{ ...S.del, marginLeft: 4 }}>×</button>
-            </div>
+  /* --- Blocs repas nouveau format --- */
+  const blocRepas = parRepas.map((r, idx) => {
+    const repasMacros = sommeMacros(r.items);
+    return (
+      <div key={r.id} style={{ paddingTop: idx === 0 ? 0 : 22, borderTop: idx === 0 ? "none" : `2px solid ${C.divider}`, marginTop: idx === 0 ? 0 : 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ width: 9, height: 9, background: C.accent, flexShrink: 0 }} />
+            <span style={{ fontSize: 19, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{r.label}</span>
+            <span style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 600 }}>{r.h}</span>
           </div>
-        ))
-      )}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {r.items.length > 0 && <button style={S.favBtn} onClick={() => onSaveFavorite(r.id)}>★ Favori</button>}
+            <span style={{ fontSize: 18, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{Math.round(repasMacros.kcal)} kcal</span>
+          </div>
+        </div>
 
-      <button onClick={() => onAdd(r.id)}
-        style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
-        + Ajouter à {r.label}
-      </button>
-    </div>
-  ));
+        {r.items.length === 0 ? (
+          <div style={{ fontSize: 13, color: C.muted, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>À compléter.</div>
+        ) : (
+          r.items.map((e) => (
+            <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderTop: `1px solid ${C.divider}`, marginTop: 8 }}>
+              {e.photo && <img src={e.photo} alt="" style={S.thumb} />}
+              <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => onEditEntry(e)}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: C.ink }}>{e.nom}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <QtyBtn onClick={() => bump(e, -10)} title="−10 g">−</QtyBtn>
+                <InlineGrams entry={e} onSave={onEditGrams} />
+                <QtyBtn onClick={() => bump(e, +10)} title="+10 g">+</QtyBtn>
+                <button onClick={() => onDel(e.id)} title="Supprimer"
+                  style={{ ...S.del, marginLeft: 4 }}>×</button>
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* Mini-barre P/G/L du repas */}
+        <MacrosBar p={repasMacros.p} c={repasMacros.c} f={repasMacros.f} />
+
+        {/* Chips ajout rapide */}
+        {recents.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+            {recents.slice(0, 4).map((f) => (
+              <button key={f.id} onClick={() => quickAdd(f, r.id)}
+                title={`Ajouter 100 g de ${f.nom} (${f.kcal} kcal)`}
+                style={{ padding: "5px 10px", border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontSize: 12, color: C.ink, fontFamily: "'Archivo', sans-serif", borderRadius: 0 }}>
+                + {f.nom}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <button onClick={() => onAdd(r.id)}
+          style={{ background: "none", border: "none", color: C.accent, fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 12, padding: "6px 0", fontFamily: "'Archivo', sans-serif", letterSpacing: "0.02em" }}>
+          + Ajouter à {r.label}
+        </button>
+      </div>
+    );
+  });
 
   const blocSport = (
     <div style={{ paddingTop: 22, borderTop: `2px solid ${C.divider}`, marginTop: 22 }}>
@@ -1247,9 +1385,16 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
 
   const panneauRepas = (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+      {bilanMensuel}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22, gap: 12, flexWrap: "wrap" }}>
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: C.ink }}>Repas du jour</div>
-        <button onClick={onDuplicatePrev} style={S.linkBtn}>⧉ Copier la veille</button>
+        <CopyMenu
+          onCopyPrev={onDuplicatePrev}
+          onCopyFromDate={(src) => copyFromDate && copyFromDate(src)}
+          onCopyFavorite={(fav) => onAddFavorite && onAddFavorite(fav, "midi")}
+          dateSel={dateSel}
+          favMeals={favMeals || []}
+        />
       </div>
       <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 22 }}>
         {blocRepas}
@@ -1315,6 +1460,73 @@ function InlineGrams({ entry, onSave }) {
       style={{ fontSize: 12, color: C.muted, minWidth: 90, textAlign: "center", cursor: "pointer", borderBottom: `1px dashed ${C.divider}`, padding: "2px 0" }}>
       {entry.grams} g · {Math.round(entry.kcal)} kcal
     </span>
+  );
+}
+
+/* Menu déroulant "Copier depuis..." (veille / autre jour / favori) */
+function CopyMenu({ onCopyPrev, onCopyFromDate, onCopyFavorite, dateSel, favMeals }) {
+  const [open, setOpen] = useState(false);
+  const [pickDate, setPickDate] = useState(false);
+  const [pickFav, setPickFav] = useState(false);
+  const [d, setD] = useState(shiftDate(dateSel, -1));
+
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={() => setOpen((o) => !o)} style={S.linkBtn}>
+        ⧉ Copier depuis… {open ? "▲" : "▼"}
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, background: "#fff", border: `2px solid ${C.ink}`, minWidth: 240, zIndex: 20, padding: 8 }}>
+          {!pickDate && !pickFav && (
+            <>
+              <button onClick={() => { onCopyPrev(); setOpen(false); }}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 13, color: C.ink }}>
+                ⧉ La veille
+              </button>
+              <button onClick={() => setPickDate(true)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 13, color: C.ink, borderTop: `1px solid ${C.divider}` }}>
+                📅 Un autre jour…
+              </button>
+              <button onClick={() => setPickFav(true)}
+                style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 13, color: C.ink, borderTop: `1px solid ${C.divider}` }}>
+                ★ Un favori… {favMeals.length ? `(${favMeals.length})` : ""}
+              </button>
+            </>
+          )}
+          {pickDate && (
+            <div style={{ padding: 8 }}>
+              <div style={{ ...S.sectionLabel, marginBottom: 8 }}>DATE À COPIER</div>
+              <input type="date" value={d} max={todayISO()}
+                onChange={(e) => setD(e.target.value)}
+                style={{ ...S.input, marginBottom: 8 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => { onCopyFromDate(d); setOpen(false); setPickDate(false); }}
+                  style={{ ...S.primaryBtn, marginTop: 0, flex: 1, padding: "10px 0" }}>Copier</button>
+                <button onClick={() => setPickDate(false)}
+                  style={{ padding: "10px 12px", border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontSize: 13, color: C.ink }}>Retour</button>
+              </div>
+            </div>
+          )}
+          {pickFav && (
+            <div style={{ padding: 8, maxHeight: 240, overflowY: "auto" }}>
+              <div style={{ ...S.sectionLabel, marginBottom: 8 }}>FAVORI À AJOUTER</div>
+              {favMeals.length === 0 ? (
+                <div style={{ ...S.miniMuted, fontSize: 12, padding: "4px 0" }}>Aucun favori enregistré.</div>
+              ) : (
+                favMeals.map((fav) => (
+                  <button key={fav.id} onClick={() => { onCopyFavorite(fav); setOpen(false); setPickFav(false); }}
+                    style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 13, color: C.ink, borderTop: `1px solid ${C.divider}` }}>
+                    ★ {fav.nom} <span style={{ color: C.muted, fontSize: 11 }}>· {Math.round(fav.items.reduce((a, i) => a + (i.kcal || 0), 0))} kcal</span>
+                  </button>
+                ))
+              )}
+              <button onClick={() => setPickFav(false)}
+                style={{ marginTop: 8, padding: "8px 12px", border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontSize: 12, color: C.ink }}>Retour</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2173,6 +2385,7 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
   const [form, setForm] = useState(null);
   const [sportForm, setSportForm] = useState(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState({}); // {g: true} = déplié
 
   const filtered = catalog.filter((f) => norm(f.nom).includes(norm(q)));
   const parGroupe = GRP_ORDER.map((g) => ({ g, items: filtered.filter((f) => f.grp === g) })).filter((x) => x.items.length);
@@ -2251,27 +2464,36 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
           </div>
           <input style={S.input} placeholder="Filtrer…" value={q} onChange={(e) => setQ(e.target.value)} />
 
-          {parGroupe.map(({ g, items }) => (
-            <div key={g} style={S.card}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ ...S.dot, background: GROUPES[g].couleur }} />
-                <span style={{ fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: 0.5, color: C.muted }}>
-                  {GROUPES[g].label}
-                </span>
-              </div>
-              {items.map((f) => (
-                <div key={f.id} style={S.entryRow}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>
-                      {f.nom}{f.id.startsWith("u_") && <span style={S.badge}>perso</span>}
+          {parGroupe.map(({ g, items }) => {
+            // Si recherche active, on force l'affichage ; sinon on respecte l'état d'ouverture.
+            const forceOpen = q.trim().length > 0;
+            const open = forceOpen || !!openGroups[g];
+            return (
+              <div key={g} style={S.cardFramed}>
+                <button
+                  onClick={() => setOpenGroups((o) => ({ ...o, [g]: !o[g] }))}
+                  style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "'Archivo', sans-serif" }}>
+                  <span style={{ ...S.dot, background: C.accent }} />
+                  <span style={{ flex: 1, textAlign: "left", fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: "0.08em", color: C.ink }}>
+                    {GROUPES[g].label}
+                  </span>
+                  <span style={{ ...S.miniMuted, fontSize: 12, fontWeight: 600 }}>{items.length}</span>
+                  <span style={{ fontSize: 18, color: C.accent, width: 20, textAlign: "center", fontWeight: 700 }}>{open ? "−" : "+"}</span>
+                </button>
+                {open && items.map((f) => (
+                  <div key={f.id} style={S.entryRow}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                        {f.nom}{f.id.startsWith("u_") && <span style={S.badge}>perso</span>}
+                      </div>
+                      <div style={S.miniMuted}>{f.kcal} kcal · P{f.p} G{f.c} L{f.f} /100g</div>
                     </div>
-                    <div style={S.miniMuted}>{f.kcal} kcal · P{f.p} G{f.c} L{f.f} /100g</div>
+                    {f.id.startsWith("u_") && <button style={S.del} onClick={() => supprimer(f.id)}>×</button>}
                   </div>
-                  {f.id.startsWith("u_") && <button style={S.del} onClick={() => supprimer(f.id)}>×</button>}
-                </div>
-              ))}
-            </div>
-          ))}
+                ))}
+              </div>
+            );
+          })}
         </>
       )}
 
@@ -2832,6 +3054,54 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
       )}
     </div>
   );
+}
+
+/* Nb de jours consécutifs (en remontant) où kcal du jour <= cible*tol et >0 */
+function streakUnderTarget(diary, cible, tol = 1.05) {
+  let n = 0;
+  const start = shiftDate(todayISO(), -1); // hors aujourd'hui (souvent incomplet)
+  for (let i = 0; i < 365; i++) {
+    const d = shiftDate(start, -i);
+    const k = sommeMacros(diary[d]).kcal;
+    if (k > 0 && k <= cible * tol) n++;
+    else break;
+  }
+  return n;
+}
+
+/* Aliments les plus récents utilisés (uniques, du plus récent au plus ancien) */
+function recentUniqueFoods(diary, catalog, limit = 4) {
+  const seen = [];
+  const dates = Object.keys(diary || {}).sort().reverse();
+  for (const d of dates) {
+    for (const e of (diary[d] || [])) {
+      if (!seen.includes(e.foodId) && catalog.find((f) => f.id === e.foodId)) seen.push(e.foodId);
+      if (seen.length >= limit * 2) break;
+    }
+    if (seen.length >= limit * 2) break;
+  }
+  return seen.slice(0, limit).map((id) => catalog.find((f) => f.id === id)).filter(Boolean);
+}
+
+/* Récap du mois donné (YYYY, MM 0-indexé) */
+function monthlyReview(diary, sport, poidsLog, year, month) {
+  const first = new Date(year, month, 1);
+  const nbDays = new Date(year, month + 1, 0).getDate();
+  const iso = (d) => `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  let totalKcal = 0, daysLogged = 0, totalSport = 0, sessions = 0;
+  for (let d = 1; d <= nbDays; d++) {
+    const k = sommeMacros(diary[iso(d)]).kcal;
+    if (k > 0) { totalKcal += k; daysLogged++; }
+    const ss = (sport[iso(d)] || []);
+    sessions += ss.length;
+    totalSport += sommeSport(ss);
+  }
+  const avgKcal = daysLogged ? Math.round(totalKcal / daysLogged) : 0;
+  const sorted = [...(poidsLog || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const start = sorted.find((x) => x.date >= iso(1));
+  const end = [...sorted].reverse().find((x) => x.date <= iso(nbDays));
+  const kgDelta = start && end ? +(end.poids - start.poids).toFixed(1) : null;
+  return { avgKcal, daysLogged, totalSport: Math.round(totalSport), sessions, kgDelta, monthName: moisNom[month], year, nbDays };
 }
 
 function kcalWeekly(diary, weeks) {
@@ -3460,10 +3730,126 @@ function Assistant({ profil, setProfil, onDone }) {
     </div>
   );
 }
+/* Génère un JPEG stylé (canvas) résumant la semaine et le télécharge. */
+function exportSemaineImage({ days, diary, sport, water, cible, waterGoal, weekLabel, weightDelta, avgKcal, inTarget, logged, sportKcal, waterAvg, fmtDay }) {
+  const W = 1080, H = 1350;
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  const accent = "#235C86", ink = "#201E1D", bg = "#F3F2F2", divider = "rgba(32,30,29,.14)", muted = "rgba(32,30,29,.52)";
+  const F = "'Archivo', system-ui, sans-serif";
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  // Header
+  ctx.fillStyle = ink;
+  ctx.font = `800 42px ${F}`;
+  ctx.fillText("NutriSuivi", 60, 90);
+  ctx.fillStyle = accent;
+  ctx.font = `700 20px ${F}`;
+  ctx.fillText("MA SEMAINE", 60, 140);
+  ctx.fillRect(60, 156, 60, 4);
+  ctx.fillStyle = ink;
+  ctx.font = `800 36px ${F}`;
+  ctx.fillText(weekLabel, 60, 220);
+  ctx.fillStyle = muted;
+  ctx.font = `500 20px ${F}`;
+  ctx.fillText(`${fmtDay(days[0])} — ${fmtDay(days[6])}`, 60, 252);
+
+  // Barres jours
+  const barY = 330, barMaxH = 200, barW = (W - 200) / 7;
+  const kcals = days.map((d) => sommeMacros(diary[d]).kcal);
+  const maxKcal = Math.max(cible * 1.2, ...kcals, 1);
+  ctx.fillStyle = accent; ctx.fillRect(60, barY + barMaxH + 40, 2, 200); // Y axis
+  ctx.fillRect(60, barY + barMaxH + 40, W - 120, 2); // X axis line
+  days.forEach((d, i) => {
+    const k = kcals[i];
+    const h = k > 0 ? Math.max(4, (k / maxKcal) * barMaxH) : 0;
+    const x = 90 + i * barW;
+    if (h > 0) {
+      ctx.fillStyle = k <= cible ? accent : "#C0562B";
+      ctx.fillRect(x, barY + barMaxH - h, barW - 12, h);
+      ctx.fillStyle = ink;
+      ctx.font = `700 14px ${F}`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(Math.round(k)), x + (barW - 12) / 2, barY + barMaxH - h - 8);
+      ctx.textAlign = "start";
+    }
+    ctx.fillStyle = muted;
+    ctx.font = `600 12px ${F}`;
+    ctx.textAlign = "center";
+    ctx.fillText(fmtDay(d), x + (barW - 12) / 2, barY + barMaxH + 62);
+    ctx.textAlign = "start";
+  });
+  // Ligne cible
+  const cibleY = barY + barMaxH - (cible / maxKcal) * barMaxH;
+  ctx.strokeStyle = accent; ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(90, cibleY); ctx.lineTo(W - 60, cibleY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = accent;
+  ctx.font = `700 13px ${F}`;
+  ctx.fillText(`Cible ${cible}`, W - 200, cibleY - 6);
+
+  // Stats block
+  const statY = 720;
+  const stats = [
+    ["MOYENNE KCAL", avgKcal || "—", "/ jour"],
+    ["JOURS SOUS CIBLE", `${inTarget}/${logged || 0}`, ""],
+    ["DÉFICIT SPORT", `${sportKcal}`, "kcal"],
+    ["HYDRATATION", waterAvg.toFixed(1).replace(".", ","), `verres/jour · cible ${waterGoal}`],
+  ];
+  const cellW = (W - 120) / 2, cellH = 150;
+  stats.forEach((s, i) => {
+    const row = Math.floor(i / 2), col = i % 2;
+    const x = 60 + col * cellW, y = statY + row * cellH;
+    ctx.strokeStyle = divider; ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, cellW - 20, cellH - 20);
+    ctx.fillStyle = muted;
+    ctx.font = `700 13px ${F}`;
+    ctx.fillText(s[0], x + 24, y + 34);
+    ctx.fillStyle = accent;
+    ctx.font = `800 44px ${F}`;
+    ctx.fillText(String(s[1]), x + 24, y + 90);
+    if (s[2]) {
+      ctx.fillStyle = muted;
+      ctx.font = `500 13px ${F}`;
+      ctx.fillText(s[2], x + 24, y + 116);
+    }
+  });
+
+  // Poids
+  const wY = statY + cellH * 2 + 30;
+  ctx.fillStyle = muted;
+  ctx.font = `700 13px ${F}`;
+  ctx.fillText("TENDANCE DE POIDS (7 J)", 60, wY);
+  if (weightDelta === null) {
+    ctx.fillStyle = muted;
+    ctx.font = `500 15px ${F}`;
+    ctx.fillText("Pas assez de données", 60, wY + 40);
+  } else {
+    ctx.fillStyle = weightDelta <= 0 ? "#2C6E49" : "#C0562B";
+    ctx.font = `800 56px ${F}`;
+    ctx.fillText(`${weightDelta > 0 ? "+" : ""}${String(weightDelta).replace(".", ",")} kg`, 60, wY + 60);
+  }
+
+  ctx.fillStyle = muted;
+  ctx.font = `500 13px ${F}`;
+  ctx.fillText("Généré par NutriSuivi", 60, H - 40);
+
+  cv.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `nutrisuivi-semaine-${days[0]}.jpg`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, "image/jpeg", 0.92);
+}
+
 function Semaine({ diary, sport, poidsLog, water, cible, waterGoal }) {
-  const dow = (new Date(todayISO()).getDay() + 6) % 7;
-  const monday = shiftDate(todayISO(), -dow);
+  const [offset, setOffset] = useState(0); // 0 = semaine courante, -1 = semaine précédente, etc.
   const today = todayISO();
+  const dow = (new Date(today).getDay() + 6) % 7;
+  const monday = shiftDate(today, -dow + offset * 7);
   const days = Array.from({ length: 7 }, (_, i) => shiftDate(monday, i));
   const passed = days.filter((d) => d <= today);
   const logged = passed.filter((d) => (diary[d] || []).length > 0);
@@ -3474,38 +3860,65 @@ function Semaine({ diary, sport, poidsLog, water, cible, waterGoal }) {
   const waterAvg = passed.length ? (passed.reduce((a, d) => a + (water[d] || 0), 0) / passed.length) : 0;
 
   const sortedLog = [...(poidsLog || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const weekEnd = days[6];
   let weightDelta = null;
-  if (sortedLog.length >= 2) {
-    const last = sortedLog[sortedLog.length - 1];
-    const ref = [...sortedLog].reverse().find((x) => x.date <= shiftDate(last.date, -6)) || sortedLog[0];
+  const weightsInWindow = sortedLog.filter((x) => x.date <= weekEnd);
+  if (weightsInWindow.length >= 2) {
+    const last = weightsInWindow[weightsInWindow.length - 1];
+    const ref = [...weightsInWindow].reverse().find((x) => x.date <= shiftDate(last.date, -6)) || weightsInWindow[0];
     weightDelta = +(last.poids - ref.poids).toFixed(1);
   }
 
   const jours = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const fmtDay = (iso) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`; };
+  const fmtRange = () => `${fmtDay(days[0])} — ${fmtDay(days[6])}`;
+  const weekLabel = offset === 0 ? "Cette semaine"
+    : offset === -1 ? "Semaine dernière"
+    : offset < 0 ? `Il y a ${-offset} semaines`
+    : offset === 1 ? "Semaine prochaine" : `Dans ${offset} semaines`;
+
   const Stat = ({ label, value, sub, color }) => (
-    <div style={{ ...S.card, flex: 1, minWidth: 130 }}>
-      <div style={S.miniMuted}>{label}</div>
-      <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 24, color: color || C.ink, marginTop: 2 }}>{value}</div>
-      {sub && <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 2 }}>{sub}</div>}
+    <div style={{ ...S.cardFramed, flex: 1, minWidth: 160 }}>
+      <div style={{ ...S.sectionLabel, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontFamily: "'Archivo', sans-serif", fontWeight: 800, fontSize: 30, color: color || C.ink, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 6 }}>{sub}</div>}
     </div>
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ fontWeight: 800, fontSize: 20, padding: "0 4px" }}>Ma semaine</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22, padding: "24px 4px" }}>
+      <div>
+        <div style={S.kicker}>MA SEMAINE</div>
+        <div style={S.kickerTrait} />
+      </div>
 
-      <div style={S.card}>
-        <div style={S.miniMuted}>Jours suivis</div>
-        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+      {/* Nav semaines */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `2px solid ${C.divider}`, borderBottom: `2px solid ${C.divider}`, padding: "12px 4px" }}>
+        <button onClick={() => setOffset((o) => o - 1)} style={S.dateArrow} title="Semaine précédente">‹</button>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{weekLabel}</div>
+          <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 2 }}>{fmtRange()}</div>
+        </div>
+        <button onClick={() => setOffset((o) => Math.min(0, o + 1))}
+          style={{ ...S.dateArrow, opacity: offset >= 0 ? 0.35 : 1, cursor: offset >= 0 ? "default" : "pointer" }}
+          title="Semaine suivante" disabled={offset >= 0}>›</button>
+      </div>
+
+      {/* Jours suivis avec dates */}
+      <div>
+        <div style={{ ...S.sectionLabel, marginBottom: 12 }}>JOURS SUIVIS</div>
+        <div style={{ display: "flex", gap: 6 }}>
           {days.map((d, i) => {
             const done = (diary[d] || []).length > 0;
             const future = d > today;
+            const isTdy = d === today;
             return (
               <div key={d} style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>{jours[i]}</div>
-                <div style={{ height: 30, borderRadius: 8, background: future ? "#EEF1EC" : done ? C.green : "#F0D9CE", display: "grid", placeItems: "center", color: "#fff", fontWeight: 700, fontSize: 13 }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>{jours[i]}</div>
+                <div style={{ height: 44, background: future ? C.divider : done ? C.accent : "#F0D9CE", display: "grid", placeItems: "center", color: "#fff", fontWeight: 800, fontSize: 15, border: isTdy ? `2px solid ${C.accentDark}` : "none" }}>
                   {future ? "" : done ? "✓" : "–"}
                 </div>
+                <div style={{ fontSize: 11, color: isTdy ? C.accent : C.muted, marginTop: 6, fontWeight: isTdy ? 700 : 500 }}>{fmtDay(d)}</div>
               </div>
             );
           })}
@@ -3513,24 +3926,29 @@ function Semaine({ diary, sport, poidsLog, water, cible, waterGoal }) {
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Stat label="Moyenne kcal/jour" value={avgKcal || "—"} sub={`cible ${cible}`} color={avgKcal && avgKcal <= cible ? C.green : C.amber} />
-        <Stat label="Jours dans la cible" value={`${inTarget}/${logged.length || 0}`} sub="repas complétés sous la cible" color={C.green} />
+        <Stat label="MOYENNE KCAL / JOUR" value={avgKcal || "—"} sub={`cible ${cible}`} color={avgKcal && avgKcal <= cible ? C.accent : C.negative} />
+        <Stat label="JOURS DANS LA CIBLE" value={`${inTarget}/${logged.length || 0}`} sub="jours loggés sous la cible" color={C.accent} />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Stat label="Déficit sport" value={`${sportKcal} kcal`} sub={`≈ ${Math.round(sportKcal / 7.7)} g de gras`} color="#2C7A86" />
-        <Stat label="Hydratation" value={`${waterAvg.toFixed(1).replace(".", ",")} / ${waterGoal}`} sub="verres/jour en moyenne" color="#3E9CA8" />
+        <Stat label="DÉFICIT SPORT" value={`${sportKcal} kcal`} sub={`≈ ${Math.round(sportKcal / 7.7)} g de gras`} color={C.accent} />
+        <Stat label="HYDRATATION" value={`${waterAvg.toFixed(1).replace(".", ",")} / ${waterGoal}`} sub="verres/jour en moyenne" color={C.accent} />
       </div>
 
-      <div style={S.card}>
-        <div style={S.miniMuted}>Tendance de poids (7 jours)</div>
+      <button onClick={() => exportSemaineImage({ days, diary, sport, water, cible, waterGoal, weekLabel, weightDelta, avgKcal, inTarget, logged: logged.length, sportKcal, waterAvg, fmtDay })}
+        style={{ ...S.addDayBtn, marginTop: 4 }}>
+        ⬇ Partager cette semaine (image)
+      </button>
+
+      <div style={S.cardFramed}>
+        <div style={{ ...S.sectionLabel, marginBottom: 8 }}>TENDANCE DE POIDS (7 JOURS)</div>
         {weightDelta === null ? (
           <div style={{ ...S.miniMuted, fontSize: 13, marginTop: 6 }}>Pèse-toi quelques jours pour voir ta tendance apparaître.</div>
         ) : (
-          <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 800, fontSize: 24, marginTop: 2, color: weightDelta <= 0 ? C.green : C.amber }}>
+          <div style={{ fontFamily: "'Archivo', sans-serif", fontWeight: 800, fontSize: 30, letterSpacing: "-0.02em", color: weightDelta <= 0 ? C.positive : C.negative, lineHeight: 1 }}>
             {weightDelta > 0 ? "+" : ""}{weightDelta.toString().replace(".", ",")} kg
           </div>
         )}
-        <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 8, lineHeight: 1.5 }}>
+        <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 12, lineHeight: 1.55 }}>
           Rappel : la balance sur plusieurs semaines est le seul vrai juge. Un écart d'un jour ne veut rien dire — regarde la pente.
         </div>
       </div>
