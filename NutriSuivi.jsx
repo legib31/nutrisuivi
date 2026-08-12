@@ -546,14 +546,14 @@ const SPORTS = [
 ];
 const kcalPerH = (met, poids) => Math.round(met * poids * 1.05);
 function sommeSport(arr) { return (arr || []).reduce((a, e) => a + e.kcal, 0); }
-function creditedKcal(date, sportAll, partSport, mode) {
-  const frac = (partSport ?? 60) / 100;
-  if (mode === "reparti") {
-    let s = 0;
-    for (let i = 0; i < 7; i++) s += sommeSport(sportAll[shiftDate(date, -i)]);
-    return Math.round((s * frac) / 7);
-  }
-  return Math.round(sommeSport(sportAll[date]) * frac);
+function creditedKcal(date, sportAll, partSport, mode, spreadDays) {
+  const frac = (partSport ?? 70) / 100;
+  if (mode === "jour") return Math.round(sommeSport(sportAll[date]) * frac);
+  // "reparti" (défaut = 7, mais 3 ou 5 possibles)
+  const N = Math.max(1, Math.min(14, Number(spreadDays) || 7));
+  let s = 0;
+  for (let i = 0; i < N; i++) s += sommeSport(sportAll[shiftDate(date, -i)]);
+  return Math.round((s * frac) / N);
 }
 const MEMO = [
   ["1 c. à café rase", "≈ 5 g"],
@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.5";
+const VERSION = "2.7";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -717,7 +717,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
 
   const [profil, setProfil] = useState({
-    poids: 86, taille: 183, age: 35, sexe: "homme", neat: "debout", sportFreq: "f1_2", deficit: 500, objectif: 80, crediterSport: false, partSport: 60, sportMode: "jour", rappelRepas: { on: true, h: 21, m: 30 }, waterGoal: 8,
+    poids: 86, taille: 183, age: 35, sexe: "homme", neat: "debout", sportFreq: "f1_2", deficit: 500, objectif: 80, crediterSport: false, partSport: 70, sportMode: "jour", sportSpreadDays: 7, rappelRepas: { on: true, h: 21, m: 30 }, waterGoal: 8, motivation: "perte", regime: "omnivore",
   });
   const [poidsLog, setPoidsLog] = useState([]);
   const [diary, setDiary] = useState({});
@@ -736,10 +736,43 @@ export default function App() {
   const [water, setWater] = useState({});
   const [showSetup, setShowSetup] = useState(false);
   const [monthReviewSeen, setMonthReviewSeen] = useState("");
+  const [sharedFoods, setSharedFoods] = useState([]);
 
   const allSports = useMemo(() => [...SPORTS, ...customSports], [customSports]);
 
-  const catalog = useMemo(() => [...FOODS, ...customFoods], [customFoods]);
+  // Catalogue = FOODS officiels (CIQUAL) + base communautaire partagée + aliments perso.
+  // Dédup : les aliments perso masquent la version partagée qui a le même code.
+  const catalog = useMemo(() => {
+    const perso = customFoods;
+    const persoCodes = new Set(perso.map((f) => f.code).filter(Boolean));
+    const shared = sharedFoods.filter((f) => !persoCodes.has(f.code));
+    return [...FOODS, ...shared, ...perso];
+  }, [customFoods, sharedFoods]);
+
+  // Contribue à la base partagée + garde une copie locale privée si nécessaire.
+  async function submitToSharedDB(entry) {
+    if (typeof window === "undefined" || !window.NUTRI_SHARED_FOODS) return;
+    if (!entry || !entry.nom || !entry.kcal) return;
+    const code = entry.code || (entry.source === "encoded" ? `enc_${norm(entry.nom).replace(/\s+/g, "_").slice(0, 40)}` : null);
+    if (!code) return;
+    try {
+      const payload = { code, nom: entry.nom, grp: entry.grp || "plat",
+        kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f,
+        fib: entry.fib || 0, suc: entry.suc || 0, source: entry.source || "scan" };
+      const saved = await window.NUTRI_SHARED_FOODS.submit(payload);
+      if (saved) {
+        // Fusionne immédiatement en local pour usage instantané.
+        setSharedFoods((s) => {
+          const idx = s.findIndex((x) => x.code === code);
+          const item = { id: "sh_" + code, code, nom: saved.nom, grp: saved.grp,
+            kcal: saved.kcal, p: saved.p, c: saved.c, f: saved.f, fib: saved.fib || 0, suc: saved.suc || 0,
+            shared: true, contributions: (idx >= 0 ? (s[idx].contributions || 1) + 1 : 1) };
+          if (idx >= 0) { const copy = s.slice(); copy[idx] = item; return copy; }
+          return [...s, item];
+        });
+      }
+    } catch {}
+  }
 
   useEffect(() => {
     (async () => {
@@ -763,6 +796,27 @@ export default function App() {
       setShowOnboarding(!(await sget("nutri:onboarding_done", false)));
       setMonthReviewSeen(await sget("nutri:monthReviewSeen", ""));
       setLoaded(true);
+      // Charge la base d'aliments partagée (asynchrone, non bloquant).
+      if (typeof window !== "undefined" && window.NUTRI_SHARED_FOODS) {
+        try {
+          const arr = await window.NUTRI_SHARED_FOODS.list();
+          const mapped = (arr || []).map((it) => ({
+            id: "sh_" + (it.code || uid()),
+            code: it.code,
+            nom: it.nom,
+            grp: it.grp || "plat",
+            kcal: Number(it.kcal) || 0,
+            p: Number(it.p) || 0,
+            c: Number(it.c) || 0,
+            f: Number(it.f) || 0,
+            fib: Number(it.fib) || 0,
+            suc: Number(it.suc) || 0,
+            shared: true,
+            contributions: Number(it.contributions) || 1,
+          }));
+          setSharedFoods(mapped);
+        } catch {}
+      }
     })();
   }, []);
 
@@ -923,8 +977,17 @@ export default function App() {
     const food = {
       id: "u_" + uid(), nom: f.nom, grp: f.grp || "extra",
       kcal: Number(f.kcal) || 0, p: Number(f.p) || 0, c: Number(f.c) || 0, f: Number(f.f) || 0,
+      fib: Number(f.fib) || 0, suc: Number(f.suc) || 0,
+      code: f.code || null,
     };
     setCustomFoods((cf) => [...cf, food]);
+    // Contribue à la base partagée (async, non bloquant)
+    submitToSharedDB({
+      code: food.code, nom: food.nom, grp: food.grp,
+      kcal: food.kcal, p: food.p, c: food.c, f: food.f,
+      fib: food.fib, suc: food.suc,
+      source: food.code ? "scan" : "encoded",
+    });
     return food;
   }
 
@@ -952,7 +1015,7 @@ export default function App() {
   const todayLong = new Date().toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const dateHeader = todayLong.charAt(0).toUpperCase() + todayLong.slice(1);
   const todayKcal = sommeMacros(diary[todayISO()]).kcal;
-  const todayCredited = profil.crediterSport ? creditedKcal(todayISO(), sport, profil.partSport ?? 60, profil.sportMode ?? "jour") : 0;
+  const todayCredited = profil.crediterSport ? creditedKcal(todayISO(), sport, profil.partSport ?? 70, profil.sportMode ?? "jour", profil.sportSpreadDays ?? 7) : 0;
   const todayTarget = cible + todayCredited;
   const todayPct = todayTarget > 0 ? Math.round((todayKcal / todayTarget) * 100) : 0;
   const badgeColor = todayPct <= 100 ? C.accent : C.negative;
@@ -1036,7 +1099,7 @@ export default function App() {
             mealPhotos={mealPhotos} onMealPhoto={setMealPhoto} onClearMealPhoto={clearMealPhoto}
             sportAll={sport} sportEntries={sport[dateSel] || []} onAddSport={() => setSportOpen(true)}
             onDelSport={delSport} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
-            sportMode={profil.sportMode ?? "jour"} onEditEntry={setEditData}
+            sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7} onEditEntry={setEditData}
             onSaveFavorite={saveFavorite} onDuplicatePrev={duplicatePrevDay} isDesktop={isDesktop}
             water={water[dateSel] || 0} waterGoal={profil.waterGoal ?? 8} onAddWater={addWater} />
         )}
@@ -1108,10 +1171,10 @@ export default function App() {
 }
 
 /* ============================ AGENDA ============================= */
-function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, onAddDirect, catalog, favMeals, onAddFavorite, copyFromDate, monthReview, onDismissMonthReview, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
+function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, onAddDirect, catalog, favMeals, onAddFavorite, copyFromDate, monthReview, onDismissMonthReview, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, sportSpreadDays, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(dateSel); return { y: d.getFullYear(), m: d.getMonth() }; });
   const sportKcal = sommeSport(sportEntries);
-  const credited = crediterSport ? creditedKcal(dateSel, sportAll, partSport, sportMode) : 0;
+  const credited = crediterSport ? creditedKcal(dateSel, sportAll, partSport, sportMode, sportSpreadDays) : 0;
   const cibleJour = cible + credited;
   const reste = cibleJour - Math.round(tot.kcal);
   const weekSport = useMemo(() => {
@@ -1622,16 +1685,33 @@ async function fetchOFF(code) {
   if (kcal == null && n["energy_100g"] != null) kcal = n["energy_100g"] / 4.184;
   const nom = [j.product.product_name, j.product.brands].filter(Boolean).join(" · ").slice(0, 60) || `Produit ${code}`;
   const num = (v) => (v != null && v !== "" ? +Number(v).toFixed(1) : "");
-  return { nom, kcal: kcal != null ? Math.round(kcal) : "", p: num(n.proteins_100g), c: num(n.carbohydrates_100g), f: num(n.fat_100g), grp: "plat" };
+  return { code, nom, kcal: kcal != null ? Math.round(kcal) : "", p: num(n.proteins_100g), c: num(n.carbohydrates_100g), f: num(n.fat_100g), grp: "plat" };
 }
 
 function Scanner({ onClose, onResult }) {
   const videoRef = useRef();
   const streamRef = useRef();
+  const photoInputRef = useRef();
   const [status, setStatus] = useState("init"); // init, scanning, nocam, nodetector, loading, notfound, error
   const [manual, setManual] = useState("");
   const [msg, setMsg] = useState("");
   const [detail, setDetail] = useState("");
+
+  /* Décode un code-barres depuis une photo importée (BarcodeDetector si dispo). */
+  async function scanFromPhoto(file) {
+    if (!file) return;
+    setStatus("loading"); setMsg("Analyse de la photo…");
+    try {
+      if (!("BarcodeDetector" in window)) {
+        setStatus("error"); setMsg("Ton navigateur ne peut pas lire les codes-barres à partir d'une image. Tape le code à la main ci-dessous."); return;
+      }
+      const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
+      const bitmap = await createImageBitmap(file);
+      const codes = await detector.detect(bitmap);
+      if (codes && codes.length) { lookup(codes[0].rawValue); return; }
+      setStatus("error"); setMsg("Aucun code-barres reconnu sur la photo. Réessaie avec une image nette ou tape le code à la main.");
+    } catch (e) { setStatus("error"); setMsg("Impossible d'analyser la photo. Tape le code à la main ci-dessous."); }
+  }
 
   function stopCam() { try { streamRef.current && streamRef.current.getTracks().forEach((t) => t.stop()); } catch {} }
 
@@ -1719,6 +1799,18 @@ function Scanner({ onClose, onResult }) {
         )}
 
         <div style={{ marginTop: 4 }}>
+          <div style={S.sectionLabel}>Ou importe une photo du code-barres</div>
+          <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 8 }}>
+            Prends une photo nette du code-barres — utile sur iPhone ou si la caméra live ne marche pas.
+          </div>
+          <button onClick={() => photoInputRef.current && photoInputRef.current.click()}
+            style={{ ...S.copyBtn, marginBottom: 12 }}>
+            📷 Choisir / prendre une photo
+          </button>
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
+            style={{ display: "none" }}
+            onChange={(e) => { if (e.target.files[0]) scanFromPhoto(e.target.files[0]); e.target.value = ""; }} />
+
           <div style={S.sectionLabel}>Ou entre le code-barres à la main</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input style={{ ...S.input, flex: 1 }} inputMode="numeric" placeholder="ex : 5410228123456"
@@ -2457,11 +2549,20 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
 
   function ajouter() {
     if (!form || !form.nom || !form.kcal) return;
-    setCustomFoods((cf) => [...cf, {
+    const food = {
       id: "u_" + uid(), nom: form.nom, grp: form.grp || "extra",
       kcal: Number(form.kcal), p: Number(form.p) || 0, c: Number(form.c) || 0, f: Number(form.f) || 0,
       fib: Number(form.fib) || 0, suc: Number(form.suc) || 0,
-    }]);
+      code: form.code || null,
+    };
+    setCustomFoods((cf) => [...cf, food]);
+    // Contribue à la base partagée
+    if (typeof window !== "undefined" && window.NUTRI_SHARED_FOODS) {
+      const code = food.code || `enc_${norm(food.nom).replace(/\s+/g, "_").slice(0, 40)}`;
+      window.NUTRI_SHARED_FOODS.submit({ code, nom: food.nom, grp: food.grp,
+        kcal: food.kcal, p: food.p, c: food.c, f: food.f, fib: food.fib, suc: food.suc,
+        source: food.code ? "scan" : "encoded" });
+    }
     setForm(null);
   }
   function supprimer(id) { setCustomFoods((cf) => cf.filter((f) => f.id !== id)); }
@@ -2552,7 +2653,15 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
                       </div>
                       <div style={S.miniMuted}>{f.kcal} kcal · P{f.p} G{f.c} L{f.f} /100g</div>
                     </div>
-                    {f.id.startsWith("u_") && <button style={S.del} onClick={() => supprimer(f.id)}>×</button>}
+                    {f.id.startsWith("u_") && (
+                      <>
+                        <button style={S.favBtn} onClick={() => {
+                          const n = (window.prompt("Renommer :", f.nom) || "").trim();
+                          if (n && n !== f.nom) setCustomFoods((cf) => cf.map((x) => x.id === f.id ? { ...x, nom: n } : x));
+                        }}>Renommer</button>
+                        <button style={{ ...S.del, marginLeft: 6 }} onClick={() => supprimer(f.id)}>×</button>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3496,10 +3605,24 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Rythme de perte : −{profil.deficit} kcal/jour</div>
+        <div style={S.sectionLabel}>Rythme de perte</div>
+        <div style={{ display: "flex", gap: 24, alignItems: "baseline", marginBottom: 8 }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em" }}>−{profil.deficit}</div>
+            <div style={{ ...S.miniMuted, fontSize: 11 }}>kcal / jour</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.ink, letterSpacing: "-0.02em" }}>−{profil.deficit * 7}</div>
+            <div style={{ ...S.miniMuted, fontSize: 11 }}>kcal / semaine</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: C.positive, letterSpacing: "-0.02em" }}>≈ {(profil.deficit * 7 / 7700).toFixed(2)}</div>
+            <div style={{ ...S.miniMuted, fontSize: 11 }}>kg / semaine</div>
+          </div>
+        </div>
         <input type="range" min="250" max="750" step="50" value={profil.deficit}
-          onChange={(e) => set("deficit")(Number(e.target.value))} style={{ width: "100%", accentColor: C.green }} />
-        <div style={{ ...S.miniMuted, marginTop: 4 }}>≈ {(profil.deficit * 7 / 7700).toFixed(2)} kg/semaine. Un déficit doux (~500) est le plus tenable.</div>
+          onChange={(e) => set("deficit")(Number(e.target.value))} style={{ width: "100%", accentColor: C.accent }} />
+        <div style={{ ...S.miniMuted, marginTop: 8, fontSize: 12, lineHeight: 1.5 }}>Un déficit doux (~500 kcal/jour, soit ~3500 kcal/semaine) est le plus tenable dans le temps.</div>
       </div>
 
       <div style={S.card}>
@@ -3516,19 +3639,36 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
         {profil.crediterSport && (
           <div style={{ marginTop: 12 }}>
             <div style={S.sectionLabel}>Quand créditer</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              {[["jour", "Le jour même"], ["reparti", "Réparti sur 7 j"]].map(([k, l]) => (
-                <button key={k} onClick={() => set("sportMode")(k)}
-                  style={{ ...S.chip, flex: 1, fontSize: 13, ...((profil.sportMode ?? "jour") === k ? S.chipOn : {}) }}>{l}</button>
-              ))}
+            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              {[["jour", "Le jour même"], ["reparti3", "Sur 3 j"], ["reparti5", "Sur 5 j"], ["reparti7", "Sur 7 j"]].map(([k, l]) => {
+                const currentMode = profil.sportMode ?? "jour";
+                const currentSpread = profil.sportSpreadDays ?? 7;
+                const active = k === "jour"
+                  ? currentMode === "jour"
+                  : currentMode === "reparti" && currentSpread === Number(k.replace("reparti", ""));
+                return (
+                  <button key={k} onClick={() => {
+                    if (k === "jour") set("sportMode")("jour");
+                    else { set("sportMode")("reparti"); set("sportSpreadDays")(Number(k.replace("reparti", ""))); }
+                  }}
+                    style={{ ...S.chip, flex: "1 1 auto", minWidth: 90, fontSize: 13, ...(active ? S.chipOn : {}) }}>{l}</button>
+                );
+              })}
             </div>
-            <div style={S.sectionLabel}>Part du sport créditée : {profil.partSport ?? 60} %</div>
-            <input type="range" min="0" max="100" step="10" value={profil.partSport ?? 60}
-              onChange={(e) => set("partSport")(Number(e.target.value))} style={{ width: "100%", accentColor: C.green }} />
-            <div style={{ ...S.miniMuted, marginTop: 4 }}>
+            <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 14, lineHeight: 1.5 }}>
+              Choisis "sur 5 jours" si tu fais du sport environ 4-5 fois par semaine — ta cible profite du crédit sur les jours "actifs" sans concentrer tout le bonus sur un seul jour.
+            </div>
+
+            <div style={S.sectionLabel}>Part du sport créditée : {profil.partSport ?? 70} %</div>
+            <input type="range" min="0" max="100" step="10" value={profil.partSport ?? 70}
+              onChange={(e) => set("partSport")(Number(e.target.value))} style={{ width: "100%", accentColor: C.accent }} />
+            <div style={{ ...S.miniMuted, marginTop: 6, lineHeight: 1.55 }}>
+              <b>Pourquoi pas 100 % ?</b> Les kcal/h (comme celles de Strava ou d'une montre) surestiment souvent de 10 à 20 % — surtout sur des sports intenses ou intermittents. À {profil.partSport ?? 70} %, tu appliques une petite marge de sécurité pour éviter de "manger tout ce que tu penses avoir brûlé". Autour de 70 % est un bon compromis en perte de poids.
+            </div>
+            <div style={{ ...S.miniMuted, marginTop: 8, fontSize: 12 }}>
               {(profil.sportMode ?? "jour") === "reparti"
-                ? `2h de padel = ~1260 kcal → à ${profil.partSport ?? 60} %, cela ajoute ~${Math.round(1260 * (profil.partSport ?? 60) / 100 / 7)} kcal/jour lissés sur la semaine plutôt qu'un gros bonus d'un coup.`
-                : `2h de padel = ~1260 kcal → à ${profil.partSport ?? 60} %, tu récupères ~${Math.round(1260 * (profil.partSport ?? 60) / 100)} kcal le jour même. 100 % = risque de surestimer ; ~50-60 % est plus sûr.`}
+                ? `Exemple : 2h de padel = ~1260 kcal → à ${profil.partSport ?? 70} %, cela ajoute ~${Math.round(1260 * (profil.partSport ?? 70) / 100 / (profil.sportSpreadDays ?? 7))} kcal/jour lissés sur ${profil.sportSpreadDays ?? 7} jours.`
+                : `Exemple : 2h de padel = ~1260 kcal → à ${profil.partSport ?? 70} %, tu récupères ~${Math.round(1260 * (profil.partSport ?? 70) / 100)} kcal le jour même.`}
             </div>
           </div>
         )}
@@ -3761,7 +3901,8 @@ const SLIDES = [
   { key: "welcome", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
   { key: "agenda", t: "L'agenda du jour", d: "Chaque jour : ta cible en gros chiffre, tes 4 repas (Déjeuner, Collation, Dîner, Souper) et ton sport. Une jauge sous ta cible te dit visuellement où tu en es." },
   { key: "add", t: "Ajouter un repas — 4 façons", d: "Liste officielle (valeurs vérifiées par CIQUAL — la base nutritionnelle de l'ANSES, agence française de sécurité alimentaire), code-barres, estimation par photo (IA), ou saisie libre. Les portions courantes s'affichent en un tap : « 1 pot = 150 g », « 1 part = 250 g »." },
-  { key: "scan", t: "Le code-barres : LA méthode la plus rapide", d: "Un tap → tu vises le code-barres au dos du produit → l'app va chercher dans Open Food Facts (base collaborative de +3M produits, belges inclus) et te propose une fiche prête à valider en 2 secondes. Le produit reste dans ta liste pour toujours — tu ne le rescannes plus jamais. C'est la méthode la plus fiable et la plus rapide pour tes produits emballés (yaourt, céréales, biscuits, plats préparés…)." },
+  { key: "scan", t: "Le code-barres : LA méthode la plus rapide", d: "Un tap → tu vises le code-barres au dos du produit → l'app va chercher dans Open Food Facts (base collaborative de +3M produits, belges inclus) et te propose une fiche prête à valider en 2 secondes. C'est la méthode la plus fiable et rapide pour tes produits emballés (yaourt, céréales, biscuits, plats préparés…)." },
+  { key: "database", t: "Une base d'aliments qui grossit à chaque scan — pour toi ET pour tous", d: "Chaque code-barres scanné ou aliment encodé à la main rejoint une base commune à tous les utilisateurs. Résultat : plus on est nombreux, plus ta liste grossit toute seule. Le lendemain d'installation, tu retrouves déjà les yaourts, céréales et plats préparés scannés par d'autres. C'est ça, la force d'une communauté qui construit ensemble : le scan est LA méthode la plus précise, et chaque contribution profite à tout le monde." },
   { key: "graph", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois. Ligne pointillée = ta cible." },
   { key: "profil", t: "Ton profil", d: "Ta cible se calcule à partir de ton profil (poids, taille, âge, activité, sport) — pas d'algorithme mystère. Le sport te récompense par des résultats concrets — physique plus tonique, muscle préservé — plus que par une assiette en plus. Pèse-toi régulièrement pour ajuster : c'est la tendance sur 2-3 semaines qui compte, jamais le chiffre d'un jour." },
 ];
@@ -3888,6 +4029,51 @@ function SlideVisual({ slideKey }) {
           <rect x="200" y="146" width="100" height="16" fill={accent} />
           <text x="250" y="157" textAnchor="middle" fontSize="8" fontWeight="700" fill="#fff">Ajouter</text>
         </g>
+      </>
+    );
+  }
+
+  if (slideKey === "database") {
+    // 3 utilisateurs contribuent → base commune → chaque utilisateur en profite.
+    const cx1 = 60, cx2 = 260, cxBase = 160;
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x="16" y="20" fontSize="9" fontWeight="700" fill={accent} letterSpacing="0.14em">BASE COMMUNAUTAIRE</text>
+        <rect x="16" y="24" width="30" height="2" fill={accent} />
+
+        {/* 3 users à gauche */}
+        {[
+          { y: 60, n: "Léa scan un yaourt" },
+          { y: 92, n: "Marc ajoute son plat" },
+          { y: 124, n: "Sofia scan des céréales" },
+        ].map((u, i) => (
+          <g key={i} style={{ animation: `ns-fade-up 0.5s ease-out ${0.1 + i * 0.2}s backwards` }}>
+            <circle cx={cx1 - 10} cy={u.y} r="7" fill={accent} />
+            <text x={cx1 + 2} y={u.y + 4} fontSize="10" fontWeight="600" fill={ink}>{u.n}</text>
+            <line x1={cx1 + 116} y1={u.y} x2={cxBase - 8} y2={102} stroke={accent} strokeWidth="1" opacity="0.4" />
+          </g>
+        ))}
+
+        {/* Base au centre */}
+        <g style={{ animation: "ns-pulse 2.5s ease-in-out infinite" }}>
+          <rect x={cxBase - 6} y="86" width="14" height="34" fill={accent} />
+          <ellipse cx={cxBase} cy="86" rx="7" ry="3" fill={accent} />
+          <ellipse cx={cxBase} cy="103" rx="7" ry="3" fill={accent} opacity="0.6" />
+          <ellipse cx={cxBase} cy="120" rx="7" ry="3" fill={accent} opacity="0.4" />
+        </g>
+        <text x={cxBase} y="140" textAnchor="middle" fontSize="8" fontWeight="700" fill={accent} letterSpacing="0.08em">DB PARTAGÉE</text>
+
+        {/* Utilisateur "toi" à droite qui reçoit */}
+        <line x1={cxBase + 8} y1="102" x2={cx2 - 8} y2="102" stroke={accent} strokeWidth="1" opacity="0.4" />
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.9s backwards" }}>
+          <circle cx={cx2 + 3} cy="102" r="10" fill={ink} />
+          <text x={cx2 + 3} y="106" textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff">TOI</text>
+        </g>
+
+        {/* Bandeau bas */}
+        <line x1="16" y1="160" x2={W - 16} y2="160" stroke={divider} strokeWidth="2" />
+        <text x={W/2} y="180" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink}>+ de scans par la communauté = ta liste qui grossit toute seule</text>
       </>
     );
   }

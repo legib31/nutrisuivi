@@ -1,9 +1,31 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Chaque personne n'accède qu'à ses propres données.
+    // Données privées : chaque utilisateur n'accède qu'aux siennes.
     match /users/{uid}/kv/{docId} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Base d'aliments partagée : tout utilisateur authentifié peut lire ;
+    // tout utilisateur authentifié peut créer une fiche (schéma minimal validé) ;
+    // les modifications se limitent à incrémenter le compteur de contributions et
+    // rafraîchir l'auteur — pas de suppression.
+    match /sharedFoods/{code} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['code','nom','kcal','p','c','f','grp','source','addedAt'])
+        && request.resource.data.code is string
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() <= 120
+        && request.resource.data.kcal is number
+        && request.resource.data.p is number
+        && request.resource.data.c is number
+        && request.resource.data.f is number
+        && request.resource.data.source in ['scan','encoded']
+        && request.resource.data.addedAt is number;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contributions','lastAt','lastBy']);
+      allow delete: if false;
     }
   }
 }

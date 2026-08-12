@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs } from "firebase/firestore";
+import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, getDoc, updateDoc, increment } from "firebase/firestore";
 import App from "./app-src.jsx";
 
 /* ============ Stockage local (IndexedDB) : cache + hors-ligne ============ */
@@ -66,6 +66,59 @@ async function pullFromCloud(uid) {
     snap.forEach((d) => { const data = d.data(); if (data && data.k != null) ps.push(localKV.set(data.k, JSON.stringify(data.value))); });
     await Promise.all(ps);
   } catch (e) {}
+}
+
+/* ============ Base d'aliments partagée (communautaire) ============ */
+// Chaque scan de code-barres ou aliment encodé rejoint une collection publique.
+// Tous les utilisateurs authentifiés lisent la même base, qui grossit au fil du temps.
+function sharedFoodDocId(rawId) {
+  // Sécurise l'id pour Firestore : lettres/chiffres/tiret/underscore uniquement, tronque à 100.
+  return String(rawId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100) || "unknown";
+}
+function makeSharedFoods(uid) {
+  const { db } = fb();
+  const col = () => collection(db, "sharedFoods");
+  return {
+    async list() {
+      try {
+        const snap = await getDocs(col());
+        const arr = [];
+        snap.forEach((d) => arr.push(d.data()));
+        return arr;
+      } catch (e) { return []; }
+    },
+    // Ajoute/met à jour un aliment dans la base partagée.
+    // food : { code, nom, kcal, p, c, f, fib?, suc?, grp?, source: 'scan'|'encoded' }
+    async submit(food) {
+      if (!food || !food.code || !food.nom) return null;
+      const id = sharedFoodDocId(food.code);
+      const ref = doc(col(), id);
+      const payload = {
+        code: String(food.code),
+        nom: String(food.nom).slice(0, 120),
+        kcal: Number(food.kcal) || 0,
+        p: Number(food.p) || 0,
+        c: Number(food.c) || 0,
+        f: Number(food.f) || 0,
+        fib: Number(food.fib) || 0,
+        suc: Number(food.suc) || 0,
+        grp: String(food.grp || "plat"),
+        source: food.source === "encoded" ? "encoded" : "scan",
+        addedAt: Date.now(),
+        addedBy: uid || "anon",
+        contributions: 1,
+      };
+      try {
+        const existing = await getDoc(ref);
+        if (existing.exists()) {
+          await updateDoc(ref, { contributions: increment(1), lastAt: Date.now(), lastBy: uid || "anon" });
+        } else {
+          await setDoc(ref, payload);
+        }
+        return payload;
+      } catch (e) { return null; }
+    },
+  };
 }
 
 /* ============ Écran de connexion ============ */
@@ -137,6 +190,7 @@ function Root() {
     if (user) {
       window.NUTRI_ACCOUNT = { email: user.email, logout: () => signOut(fb().auth) };
       window.storage = makeCloudKV(user.uid);
+      window.NUTRI_SHARED_FOODS = makeSharedFoods(user.uid);
       pullFromCloud(user.uid).then(() => setReady(true));
     }
   }, [user]);
