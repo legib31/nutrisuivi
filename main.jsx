@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { initializeApp } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, getDoc, updateDoc, increment } from "firebase/firestore";
+import { getFirestore, collection, doc, setDoc, deleteDoc, getDocs, getDoc, updateDoc, increment, addDoc, query, orderBy, limit } from "firebase/firestore";
 import App from "./app-src.jsx";
 
 /* ============ Stockage local (IndexedDB) : cache + hors-ligne ============ */
@@ -121,6 +121,60 @@ function makeSharedFoods(uid) {
   };
 }
 
+/* ============ Repas partagés (feed communautaire) ============ */
+function makeSharedMeals(user) {
+  const { db } = fb();
+  const col = () => collection(db, "sharedMeals");
+  const authorName = (user.email || "").split("@")[0] || "utilisateur";
+  return {
+    async list(max = 40) {
+      try {
+        const q = query(col(), orderBy("createdAt", "desc"), limit(max));
+        const snap = await getDocs(q);
+        const arr = [];
+        snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+        return arr;
+      } catch (e) { return []; }
+    },
+    async submit(meal) {
+      if (!meal || !meal.nom) return null;
+      const payload = {
+        nom: String(meal.nom).slice(0, 120),
+        description: String(meal.description || "").slice(0, 500),
+        photo: meal.photo || null, // dataURL base64
+        ingredients: Array.isArray(meal.ingredients) ? meal.ingredients.slice(0, 30).map((i) => ({
+          nom: String(i.nom || "").slice(0, 80),
+          grams: Number(i.grams) || 0,
+        })) : [],
+        kcal: Number(meal.kcal) || 0,
+        p: Number(meal.p) || 0,
+        c: Number(meal.c) || 0,
+        f: Number(meal.f) || 0,
+        fib: Number(meal.fib) || 0,
+        suc: Number(meal.suc) || 0,
+        portion: Number(meal.portion) || 100,
+        grp: String(meal.grp || "plat"),
+        authorUid: user.uid,
+        authorName,
+        createdAt: Date.now(),
+        likes: 0,
+      };
+      try { const ref = await addDoc(col(), payload); return { id: ref.id, ...payload }; }
+      catch (e) { return null; }
+    },
+    async like(id) {
+      try { await updateDoc(doc(col(), id), { likes: increment(1) }); return true; }
+      catch { return false; }
+    },
+    async remove(id) {
+      try { await deleteDoc(doc(col(), id)); return true; }
+      catch { return false; }
+    },
+    currentUid: user.uid,
+    currentAuthorName: authorName,
+  };
+}
+
 /* ============ Écran de connexion ============ */
 const A = {
   wrap: { maxWidth: 420, margin: "0 auto", minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "center", padding: 24, background: "#F4F6F1", fontFamily: "'Inter',system-ui,sans-serif", color: "#17241C" },
@@ -191,6 +245,7 @@ function Root() {
       window.NUTRI_ACCOUNT = { email: user.email, logout: () => signOut(fb().auth) };
       window.storage = makeCloudKV(user.uid);
       window.NUTRI_SHARED_FOODS = makeSharedFoods(user.uid);
+      window.NUTRI_SHARED_MEALS = makeSharedMeals(user);
       pullFromCloud(user.uid).then(() => setReady(true));
     }
   }, [user]);

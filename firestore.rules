@@ -27,5 +27,33 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contributions','lastAt','lastBy']);
       allow delete: if false;
     }
+
+    // Repas partagés : la communauté poste des plats (photo + fiche technique).
+    // Lecture ouverte à tout utilisateur authentifié.
+    // Création : n'importe quel utilisateur authentifié, avec un schéma minimal validé.
+    // Update : seul l'auteur peut éditer (et seulement certains champs) ; les likes sont incrémentables par tous.
+    // Suppression : seul l'auteur peut supprimer son propre post.
+    match /sharedMeals/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['nom','kcal','p','c','f','portion','authorUid','createdAt'])
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() <= 120
+        && request.resource.data.kcal is number
+        && request.resource.data.p is number
+        && request.resource.data.c is number
+        && request.resource.data.f is number
+        && request.resource.data.portion is number
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.createdAt is number;
+      allow update: if request.auth != null && (
+        // Auteur : édition libre sauf authorUid/createdAt
+        (resource.data.authorUid == request.auth.uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['authorUid','createdAt']))
+        // Ou n'importe qui : incrément d'un like (compteur uniquement)
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+      );
+      allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+    }
   }
 }

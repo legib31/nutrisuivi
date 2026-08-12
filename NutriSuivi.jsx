@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.0";
+const VERSION = "3.1";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -2699,7 +2699,7 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 8, padding: "0 4px", flexWrap: "wrap" }}>
-        {[["aliments", "Aliments"], ["recettes", "Recettes"], ["sport", "Sport"], ["favoris", "Favoris"]].map(([k, l]) => (
+        {[["aliments", "Aliments"], ["recettes", "Recettes"], ["partages", "Repas partagés"], ["sport", "Sport"], ["favoris", "Favoris"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ ...S.tabPill, ...(view === k ? S.tabPillOn : {}) }}>{l}</button>
         ))}
       </div>
@@ -2850,6 +2850,10 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
 
       {view === "recettes" && (
         <RecettesView catalog={catalog} customFoods={customFoods} setCustomFoods={setCustomFoods} />
+      )}
+
+      {view === "partages" && (
+        <MealsFeed catalog={catalog} customFoods={customFoods} setCustomFoods={setCustomFoods} />
       )}
 
       {view === "favoris" && (
@@ -3016,6 +3020,291 @@ function RecettesView({ catalog, customFoods, setCustomFoods }) {
               const f = catalog.find((c) => c.id === it.foodId);
               return <span key={i}>{i ? " · " : ""}{f ? f.nom : "?"} {it.grams}g</span>;
             })}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* Feed communautaire des repas partagés (photo + fiche technique). */
+function MealsFeed({ catalog, customFoods, setCustomFoods }) {
+  const [items, setItems] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [form, setForm] = useState(null); // { nom, description, photo, items:[{foodId,grams}], portion, q }
+  const [detail, setDetail] = useState(null);
+  const api = (typeof window !== "undefined") ? window.NUTRI_SHARED_MEALS : null;
+
+  useEffect(() => {
+    if (!api) { setErr("Connecte-toi pour voir les repas partagés."); setItems([]); return; }
+    (async () => {
+      setBusy(true);
+      const arr = await api.list(60);
+      setItems(arr);
+      setBusy(false);
+    })();
+  }, []);
+
+  async function refresh() {
+    if (!api) return;
+    setBusy(true);
+    const arr = await api.list(60);
+    setItems(arr);
+    setBusy(false);
+  }
+
+  function startPost() {
+    setForm({ nom: "", description: "", photo: null, items: [], portion: 300, q: "" });
+  }
+  function addIngredient(food) {
+    setForm((f) => ({ ...f, items: [...f.items, { foodId: food.id, nom: food.nom, grams: 100 }], q: "" }));
+  }
+  function updateGrams(idx, g) {
+    setForm((f) => ({ ...f, items: f.items.map((it, i) => i === idx ? { ...it, grams: Number(g) || 0 } : it) }));
+  }
+  function removeIngredient(idx) {
+    setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  }
+  function onPhoto(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 720, scale = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = img.width * scale; cv.height = img.height * scale;
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        setForm((f) => ({ ...f, photo: cv.toDataURL("image/jpeg", 0.72) }));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  function totalsFor(items) {
+    return items.reduce((acc, it) => {
+      const food = catalog.find((c) => c.id === it.foodId);
+      if (!food) return acc;
+      const g = Number(it.grams) || 0;
+      const factor = g / 100;
+      acc.grams += g;
+      acc.kcal += (food.kcal || 0) * factor;
+      acc.p += (food.p || 0) * factor;
+      acc.c += (food.c || 0) * factor;
+      acc.f += (food.f || 0) * factor;
+      acc.fib += (food.fib || 0) * factor;
+      acc.suc += (food.suc || 0) * factor;
+      return acc;
+    }, { grams: 0, kcal: 0, p: 0, c: 0, f: 0, fib: 0, suc: 0 });
+  }
+
+  async function post() {
+    if (!form.nom.trim()) { window.alert("Donne un nom à ton plat."); return; }
+    if (!form.items.length) { window.alert("Ajoute au moins un ingrédient."); return; }
+    const tot = totalsFor(form.items);
+    if (tot.grams <= 0) { window.alert("Poids total nul."); return; }
+    setBusy(true); setErr("");
+    const per100 = (v) => +(v * 100 / tot.grams).toFixed(1);
+    const portion = Number(form.portion) || Math.round(tot.grams);
+    const factor = portion / 100;
+    try {
+      const saved = await api.submit({
+        nom: form.nom.trim(),
+        description: form.description.trim(),
+        photo: form.photo,
+        ingredients: form.items.map((i) => ({ nom: i.nom, grams: Number(i.grams) || 0 })),
+        // On stocke les macros POUR 100g pour permettre le repartage à d'autres portions
+        kcal: per100(tot.kcal), p: per100(tot.p), c: per100(tot.c), f: per100(tot.f),
+        fib: per100(tot.fib), suc: per100(tot.suc),
+        portion,
+      });
+      if (!saved) throw new Error("save failed");
+      setForm(null);
+      await refresh();
+    } catch (e) {
+      setErr("Impossible de publier (connexion ou permissions Firestore).");
+    }
+    setBusy(false);
+  }
+
+  async function like(id) {
+    if (!api) return;
+    setItems((arr) => arr.map((x) => x.id === id ? { ...x, likes: (x.likes || 0) + 1, _liked: true } : x));
+    await api.like(id);
+  }
+
+  async function del(id) {
+    if (!api) return;
+    if (!window.confirm("Supprimer ton post ? Action irréversible.")) return;
+    await api.remove(id);
+    await refresh();
+  }
+
+  function importToCatalog(m) {
+    // Ajoute le plat comme aliment personnel (macros pour 100 g).
+    const food = {
+      id: "u_" + uid(),
+      nom: `${m.nom} (partagé par ${m.authorName})`,
+      grp: m.grp || "plat",
+      kcal: Number(m.kcal) || 0, p: Number(m.p) || 0, c: Number(m.c) || 0, f: Number(m.f) || 0,
+      fib: Number(m.fib) || 0, suc: Number(m.suc) || 0,
+      portion: Number(m.portion) || 200,
+    };
+    setCustomFoods((cf) => [...cf, food]);
+    window.alert(`« ${m.nom} » ajouté à ta liste perso — tu peux le retrouver dans Aliments.`);
+  }
+
+  const suggestions = form && form.q
+    ? catalog.filter((f) => norm(f.nom).includes(norm(form.q))).slice(0, 6)
+    : [];
+  const tot = form ? totalsFor(form.items) : null;
+
+  return (
+    <>
+      {/* Bandeau accent : contexte communautaire */}
+      <div style={{ background: C.accentTint, border: `2px solid ${C.accent}`, padding: "14px 16px" }}>
+        <div style={{ ...S.kicker, color: C.accent, marginBottom: 6 }}>REPAS PARTAGÉS PAR LA COMMUNAUTÉ</div>
+        <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.55 }}>
+          Photos de plats + fiches techniques (ingrédients, macros, portion) postés par d'autres utilisateurs. <b>Inspire-toi, likes, et importe dans ta liste perso en un tap.</b> Chacun peut poster ses propres plats pour aider la communauté.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 4px" }}>
+        <button style={S.addSmall} onClick={() => form ? setForm(null) : startPost()}>
+          {form ? "Fermer" : "＋ Partager mon plat"}
+        </button>
+      </div>
+
+      {form && (
+        <div style={S.card}>
+          <div style={S.sectionLabel}>Partager un plat</div>
+
+          {/* Photo */}
+          <div style={{ marginBottom: 12 }}>
+            {form.photo ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img src={form.photo} alt="" style={{ maxWidth: "100%", maxHeight: 240, objectFit: "cover", display: "block", border: `1px solid ${C.divider}` }} />
+                <button onClick={() => setForm({ ...form, photo: null })}
+                  style={{ position: "absolute", top: 6, right: 6, width: 28, height: 28, border: "none", background: "rgba(0,0,0,.65)", color: "#fff", cursor: "pointer" }}>×</button>
+              </div>
+            ) : (
+              <label style={{ ...S.photoBtn, display: "block", padding: "18px 0", textAlign: "center", cursor: "pointer" }}>
+                📷 Ajouter une photo du plat
+                <input type="file" accept="image/*" style={{ display: "none" }} onChange={onPhoto} />
+              </label>
+            )}
+          </div>
+
+          <input style={{ ...S.input, marginBottom: 8 }} placeholder="Nom du plat (ex : Poke bowl saumon-avocat)"
+            value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
+          <textarea style={{ ...S.input, marginBottom: 8, minHeight: 60, resize: "vertical", fontFamily: "'Archivo', sans-serif" }}
+            placeholder="Description (optionnel) — technique, astuce, contexte…"
+            value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+
+          <div style={{ ...S.miniMuted, marginTop: 8, marginBottom: 6 }}>Ingrédients</div>
+          {form.items.map((it, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <div style={{ flex: 1, fontSize: 14 }}>{it.nom}</div>
+              <input type="number" value={it.grams} onChange={(e) => updateGrams(i, e.target.value)}
+                style={{ ...S.input, width: 80, padding: "8px 10px", margin: 0 }} />
+              <span style={{ ...S.miniMuted, fontSize: 12 }}>g</span>
+              <button style={S.del} onClick={() => removeIngredient(i)}>×</button>
+            </div>
+          ))}
+          <input style={{ ...S.input, marginTop: 8 }} placeholder="Chercher un ingrédient…"
+            value={form.q} onChange={(e) => setForm({ ...form, q: e.target.value })} />
+          {suggestions.length > 0 && (
+            <div style={{ marginTop: 6, background: "#FAFBF8", padding: 6 }}>
+              {suggestions.map((s) => (
+                <button key={s.id} onClick={() => addIngredient(s)}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 10px", border: "none", background: "transparent", cursor: "pointer", fontSize: 14 }}>
+                  {s.nom} <span style={{ ...S.miniMuted, fontSize: 11 }}>· {s.kcal} kcal /100g</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tot && tot.grams > 0 && (
+            <div style={{ ...S.miniMuted, marginTop: 12, background: C.accentTint, padding: "10px 12px", lineHeight: 1.6, color: C.accent }}>
+              Total plat : <b>{Math.round(tot.grams)} g</b> · {Math.round(tot.kcal)} kcal · P{Math.round(tot.p)} G{Math.round(tot.c)} L{Math.round(tot.f)}<br />
+              Pour 100 g : <b>{Math.round(tot.kcal * 100 / tot.grams)} kcal</b>
+            </div>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <div style={S.miniMuted}>Portion type (g) — celle qui sera affichée aux autres</div>
+            <input type="number" value={form.portion} onChange={(e) => setForm({ ...form, portion: e.target.value })}
+              style={{ ...S.input, width: 120, marginTop: 4 }} />
+          </div>
+
+          <button style={{ ...S.primaryBtn, marginTop: 12, opacity: busy ? 0.6 : 1 }} disabled={busy} onClick={post}>
+            {busy ? "Publication…" : "Publier"}
+          </button>
+        </div>
+      )}
+
+      {busy && items === null && <div style={{ ...S.miniMuted, textAlign: "center", padding: 20 }}>Chargement des repas partagés…</div>}
+      {err && <div style={{ ...S.miniMuted, fontSize: 12, color: C.negative, padding: "0 4px" }}>{err}</div>}
+
+      {items && items.length === 0 && !form && (
+        <div style={S.card}>
+          <div style={{ ...S.miniMuted, fontSize: 13, lineHeight: 1.5 }}>
+            Personne n'a encore posté de repas. <b>Sois le premier !</b> Touche « ＋ Partager mon plat » pour ajouter une photo + les ingrédients — ton post sera visible par tous.
+          </div>
+        </div>
+      )}
+
+      {items && items.map((m) => (
+        <div key={m.id} style={S.cardFramed}>
+          {m.photo && (
+            <img src={m.photo} alt="" style={{ width: "100%", maxHeight: 260, objectFit: "cover", display: "block", marginBottom: 12, cursor: "pointer" }}
+              onClick={() => setDetail(m)} />
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em" }}>{m.nom}</div>
+              <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 2, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>
+                PAR {m.authorName || "?"} · {new Date(m.createdAt).toLocaleDateString("fr-BE", { day: "2-digit", month: "short" })}
+              </div>
+              {m.description && (
+                <div style={{ fontSize: 13, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{m.description}</div>
+              )}
+              <div style={{ marginTop: 10, display: "flex", gap: 18, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ ...S.sectionLabel, marginBottom: 2, fontSize: 10 }}>PORTION</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.accent }}>{m.portion} g</div>
+                </div>
+                <div>
+                  <div style={{ ...S.sectionLabel, marginBottom: 2, fontSize: 10 }}>KCAL / PORTION</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: C.accent }}>{Math.round((m.kcal || 0) * m.portion / 100)}</div>
+                </div>
+                <div>
+                  <div style={{ ...S.sectionLabel, marginBottom: 2, fontSize: 10 }}>P·G·L / 100 G</div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{Math.round(m.p)}·{Math.round(m.c)}·{Math.round(m.f)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {m.ingredients && m.ingredients.length > 0 && (
+            <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 12, lineHeight: 1.5, borderTop: `1px solid ${C.divider}`, paddingTop: 10 }}>
+              <b>Ingrédients :</b> {m.ingredients.map((i, k) => `${i.nom} ${i.grams}g`).join(" · ")}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button style={{ ...S.addSmall }} onClick={() => importToCatalog(m)}>＋ Ajouter à ma liste</button>
+            <button onClick={() => like(m.id)}
+              style={{ padding: "8px 14px", border: `1px solid ${C.divider}`, background: m._liked ? C.accentTint : "#fff", color: C.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Archivo', sans-serif" }}>
+              ♥ {m.likes || 0}
+            </button>
+            {api && m.authorUid === api.currentUid && (
+              <button onClick={() => del(m.id)}
+                style={{ padding: "8px 14px", border: `1px solid ${C.divider}`, background: "#fff", color: C.negative, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Archivo', sans-serif" }}>
+                Supprimer mon post
+              </button>
+            )}
           </div>
         </div>
       ))}
