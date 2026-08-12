@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.7";
+const VERSION = "2.9";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1692,77 +1692,106 @@ function Scanner({ onClose, onResult }) {
   const videoRef = useRef();
   const streamRef = useRef();
   const photoInputRef = useRef();
-  const [status, setStatus] = useState("init"); // init, scanning, nocam, nodetector, loading, notfound, error
+  // mode : "menu" (choix), "live" (caméra en direct), "loading", "notfound", "error"
+  const [mode, setMode] = useState("menu");
   const [manual, setManual] = useState("");
   const [msg, setMsg] = useState("");
-  const [detail, setDetail] = useState("");
+  const rafRef = useRef();
+  const detectorRef = useRef(null);
+  const activeRef = useRef(true);
 
-  /* Décode un code-barres depuis une photo importée (BarcodeDetector si dispo). */
+  const hasDetector = typeof window !== "undefined" && "BarcodeDetector" in window;
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const canLive = hasDetector && !isIOS && typeof navigator !== "undefined"
+    && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+
+  function stopCam() {
+    try { streamRef.current && streamRef.current.getTracks().forEach((t) => t.stop()); } catch {}
+    streamRef.current = null;
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+  }
+
+  async function lookup(code) {
+    stopCam(); setMode("loading"); setMsg(`Recherche du code ${code}…`);
+    try {
+      const prod = await fetchOFF(code);
+      if (prod) onResult(prod);
+      else { setMode("notfound"); setMsg(`Produit ${code} introuvable dans Open Food Facts. Encode-le à la main — il sera sauvegardé dans ta liste pour toujours.`); }
+    } catch { setMode("error"); setMsg("Connexion à Open Food Facts impossible. Vérifie ta connexion, ou encode les valeurs à la main."); }
+  }
+
+  /* Décode un code-barres depuis une photo importée. */
   async function scanFromPhoto(file) {
     if (!file) return;
-    setStatus("loading"); setMsg("Analyse de la photo…");
+    setMode("loading"); setMsg("Analyse de la photo…");
     try {
-      if (!("BarcodeDetector" in window)) {
-        setStatus("error"); setMsg("Ton navigateur ne peut pas lire les codes-barres à partir d'une image. Tape le code à la main ci-dessous."); return;
+      if (!hasDetector) {
+        setMode("error");
+        setMsg("Ton navigateur ne peut pas décoder l'image (fréquent sur iPhone). Tape le code à la main ci-dessous — c'est aussi rapide.");
+        return;
       }
       const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "qr_code"] });
       const bitmap = await createImageBitmap(file);
       const codes = await detector.detect(bitmap);
       if (codes && codes.length) { lookup(codes[0].rawValue); return; }
-      setStatus("error"); setMsg("Aucun code-barres reconnu sur la photo. Réessaie avec une image nette ou tape le code à la main.");
-    } catch (e) { setStatus("error"); setMsg("Impossible d'analyser la photo. Tape le code à la main ci-dessous."); }
+      setMode("error"); setMsg("Aucun code-barres reconnu sur la photo. Essaie une photo plus nette (bon éclairage, code bien cadré) ou tape le code à la main.");
+    } catch { setMode("error"); setMsg("Impossible d'analyser la photo. Tape le code à la main ci-dessous."); }
   }
 
-  function stopCam() { try { streamRef.current && streamRef.current.getTracks().forEach((t) => t.stop()); } catch {} }
-
-  async function lookup(code) {
-    stopCam(); setStatus("loading"); setMsg(`Recherche du code ${code}…`);
+  /* Démarre la caméra en direct (uniquement sur bouton). */
+  async function startLive() {
+    if (!canLive) return;
+    setMode("live"); setMsg("");
     try {
-      const prod = await fetchOFF(code);
-      if (prod) onResult(prod);
-      else { setStatus("notfound"); setMsg(`Produit ${code} introuvable dans Open Food Facts. Encode-le à la main — il sera sauvegardé dans ta liste pour toujours.`); }
-    } catch { setStatus("error"); setMsg("Connexion à Open Food Facts impossible. Vérifie ta connexion, ou encode les valeurs à la main."); }
+      detectorRef.current = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      if (!activeRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+      streamRef.current = stream;
+      // Attend le prochain rendu pour que videoRef existe
+      setTimeout(async () => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try { await videoRef.current.play(); } catch {}
+        }
+        const tick = async () => {
+          if (!activeRef.current || !detectorRef.current || !videoRef.current) return;
+          try {
+            const codes = await detectorRef.current.detect(videoRef.current);
+            if (codes && codes.length) { lookup(codes[0].rawValue); return; }
+          } catch {}
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      }, 50);
+    } catch (e) {
+      stopCam();
+      setMode("error");
+      setMsg(e && e.name === "NotAllowedError"
+        ? "Tu n'as pas autorisé l'accès à la caméra. Autorise-le dans les réglages du navigateur, ou prends une photo à la place."
+        : "La caméra n'est pas accessible (déjà utilisée par une autre app, ou bloquée). Prends une photo ou tape le code à la main.");
+    }
   }
 
   useEffect(() => {
-    let active = true, raf;
-    (async () => {
-      if (typeof window === "undefined") { setStatus("nodetector"); return; }
-      if (!("BarcodeDetector" in window)) {
-        setStatus("nodetector");
-        setDetail("Ton navigateur ne peut pas lire directement les codes-barres (fréquent sur iPhone et sur PC). Utilise le champ ci-dessous : tape le code (13 chiffres au dos du produit) et c'est fait.");
-        return;
-      }
-      let detector;
-      try { detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e"] }); }
-      catch { setStatus("nodetector"); setDetail("Le lecteur de codes-barres n'a pas pu démarrer. Utilise le code manuel ci-dessous."); return; }
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setStatus("nocam"); setDetail("Aucune caméra détectée. Utilise le code manuel ci-dessous."); return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
-        if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; try { await videoRef.current.play(); } catch {} }
-        setStatus("scanning");
-        const tick = async () => {
-          if (!active) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes && codes.length) { lookup(codes[0].rawValue); return; }
-          } catch {}
-          raf = requestAnimationFrame(tick);
-        };
-        tick();
-      } catch (e) {
-        setStatus("nocam");
-        setDetail(e && e.name === "NotAllowedError"
-          ? "Tu n'as pas autorisé l'accès à la caméra. Autorise-le dans les réglages du navigateur, ou utilise le code manuel ci-dessous."
-          : "La caméra n'est pas accessible (déjà utilisée par une autre app, ou bloquée). Utilise le code manuel ci-dessous.");
-      }
-    })();
-    return () => { active = false; if (raf) cancelAnimationFrame(raf); stopCam(); };
+    activeRef.current = true;
+    return () => { activeRef.current = false; stopCam(); };
   }, []);
+
+  const BigChoice = ({ icon, label, sub, onClick, primary, disabled }) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ width: "100%", padding: "16px 18px", border: primary ? "none" : `1px solid ${C.divider}`,
+        background: disabled ? C.divider : (primary ? C.accent : "#fff"),
+        color: disabled ? C.muted : (primary ? "#fff" : C.ink),
+        cursor: disabled ? "not-allowed" : "pointer", textAlign: "left",
+        display: "flex", gap: 14, alignItems: "center", fontFamily: "'Archivo', sans-serif",
+        marginBottom: 10, opacity: disabled ? 0.55 : 1 }}>
+      <span style={{ fontSize: 24, flexShrink: 0 }}>{icon}</span>
+      <span style={{ flex: 1 }}>
+        <span style={{ display: "block", fontSize: 15, fontWeight: 800, letterSpacing: "-0.01em" }}>{label}</span>
+        <span style={{ display: "block", fontSize: 12, marginTop: 2, opacity: primary ? 0.85 : 0.6 }}>{sub}</span>
+      </span>
+    </button>
+  );
 
   return (
     <div style={S.overlay} onClick={() => { stopCam(); onClose(); }}>
@@ -1773,54 +1802,69 @@ function Scanner({ onClose, onResult }) {
           <button style={S.del} onClick={() => { stopCam(); onClose(); }}>×</button>
         </div>
 
-        <div style={{ ...S.miniMuted, background: "#EAF1EB", borderRadius: 10, padding: "8px 10px", marginBottom: 12, lineHeight: 1.5, fontSize: 12 }}>
-          Une fois trouvé, le produit est <b>sauvegardé pour toujours</b> dans ta liste — tu ne rescannes plus.
+        <div style={{ background: C.accentTint, padding: "8px 10px", marginBottom: 14, fontSize: 12, color: C.accent, lineHeight: 1.5 }}>
+          Une fois trouvé, le produit est <b>sauvegardé pour toujours</b> — pour toi et pour tous les autres utilisateurs.
         </div>
 
-        {status === "scanning" && (
-          <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", marginBottom: 10 }}>
-            <video ref={videoRef} playsInline muted autoPlay style={{ width: "100%", display: "block", maxHeight: 280, objectFit: "cover", background: "#000" }} />
-            <div style={{ position: "absolute", inset: "32% 12%", border: "2px solid rgba(255,255,255,.85)", borderRadius: 10 }} />
-            <div style={{ position: "absolute", bottom: 6, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 11, textShadow: "0 1px 2px rgba(0,0,0,.6)" }}>
-              Vise le code-barres · si l'image reste noire, ta caméra est peut-être couverte
+        {mode === "menu" && (
+          <>
+            <div style={{ ...S.sectionLabel, marginBottom: 10 }}>CHOISIS UNE MÉTHODE</div>
+            <BigChoice icon="🖼️" primary label="Prendre / choisir une photo"
+              sub="Marche partout (iPhone, PC, Android). La méthode la plus fiable."
+              onClick={() => photoInputRef.current && photoInputRef.current.click()} />
+            <BigChoice icon="📹" label="Scanner en direct avec la caméra"
+              sub={canLive ? "Chrome Android · vise le code-barres" : (isIOS ? "Indisponible sur iPhone — utilise la photo ci-dessus" : "Indisponible dans ce navigateur — utilise la photo")}
+              onClick={startLive} disabled={!canLive} />
+            <BigChoice icon="⌨️" label="Taper le code à la main"
+              sub="13 chiffres au dos du produit — utilise le champ ci-dessous"
+              onClick={() => { const inp = document.getElementById("scan-manual"); if (inp) inp.focus(); }} />
+
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
+              style={{ display: "none" }}
+              onChange={(e) => { if (e.target.files[0]) scanFromPhoto(e.target.files[0]); e.target.value = ""; }} />
+          </>
+        )}
+
+        {mode === "live" && (
+          <>
+            <div style={{ position: "relative", overflow: "hidden", background: "#000", marginBottom: 10 }}>
+              <video ref={videoRef} playsInline muted autoPlay style={{ width: "100%", display: "block", maxHeight: 320, objectFit: "cover", background: "#000" }} />
+              <div style={{ position: "absolute", inset: "30% 12%", border: "2px solid rgba(255,255,255,.9)" }} />
+              <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 11, textShadow: "0 1px 3px rgba(0,0,0,.7)" }}>
+                Vise le code-barres — si l'image reste noire, ferme et utilise « Prendre une photo »
+              </div>
             </div>
-          </div>
-        )}
-        {status === "init" && <div style={{ ...S.miniMuted, textAlign: "center", padding: 12 }}>Initialisation de la caméra…</div>}
-        {status === "loading" && <div style={{ ...S.miniMuted, textAlign: "center", padding: 12 }}>{msg}</div>}
-        {(status === "nocam" || status === "nodetector") && (
-          <div style={{ background: "#FCF3E6", borderRadius: 10, padding: "10px 12px", marginBottom: 10, fontSize: 13, lineHeight: 1.5, color: "#7A5A18" }}>
-            <b>{status === "nodetector" ? "Lecture caméra indisponible" : "Caméra bloquée"}</b><br />
-            {detail}
-          </div>
-        )}
-        {(status === "notfound" || status === "error") && (
-          <div style={{ ...S.miniMuted, textAlign: "center", padding: 12, color: C.red }}>{msg}</div>
+            <button onClick={() => { stopCam(); setMode("menu"); }}
+              style={{ ...S.copyBtn, marginBottom: 12 }}>← Retour au choix</button>
+          </>
         )}
 
-        <div style={{ marginTop: 4 }}>
-          <div style={S.sectionLabel}>Ou importe une photo du code-barres</div>
-          <div style={{ ...S.miniMuted, fontSize: 11, marginBottom: 8 }}>
-            Prends une photo nette du code-barres — utile sur iPhone ou si la caméra live ne marche pas.
-          </div>
-          <button onClick={() => photoInputRef.current && photoInputRef.current.click()}
-            style={{ ...S.copyBtn, marginBottom: 12 }}>
-            📷 Choisir / prendre une photo
-          </button>
-          <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => { if (e.target.files[0]) scanFromPhoto(e.target.files[0]); e.target.value = ""; }} />
+        {mode === "loading" && (
+          <div style={{ ...S.miniMuted, textAlign: "center", padding: 20, fontSize: 13 }}>{msg}</div>
+        )}
 
-          <div style={S.sectionLabel}>Ou entre le code-barres à la main</div>
+        {(mode === "notfound" || mode === "error") && (
+          <div style={{ background: "#FCF3E6", padding: "10px 12px", marginBottom: 14, fontSize: 13, lineHeight: 1.5, color: "#7A5A18" }}>
+            {msg}
+          </div>
+        )}
+
+        {(mode === "notfound" || mode === "error") && (
+          <button onClick={() => { setMode("menu"); setMsg(""); }}
+            style={{ ...S.copyBtn, marginBottom: 12 }}>← Retour au choix</button>
+        )}
+
+        <div style={{ borderTop: `2px solid ${C.divider}`, paddingTop: 14, marginTop: 6 }}>
+          <div style={S.sectionLabel}>ENTRE LE CODE-BARRES À LA MAIN</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input style={{ ...S.input, flex: 1 }} inputMode="numeric" placeholder="ex : 5410228123456"
+            <input id="scan-manual" style={{ ...S.input, flex: 1 }} inputMode="numeric" placeholder="ex : 5410228123456"
               value={manual} onChange={(e) => setManual(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && manual.trim() && lookup(manual.trim())} />
             <button style={{ ...S.primaryBtn, marginTop: 0, width: "auto", padding: "12px 16px" }}
               onClick={() => manual.trim() && lookup(manual.trim())}>Chercher</button>
           </div>
           <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 8 }}>
-            Données Open Food Facts (base collaborative, produits belges inclus). Le résultat pré-remplit la fiche que tu valides.
+            Données Open Food Facts (base collaborative, produits belges inclus).
           </div>
         </div>
       </div>
@@ -3480,7 +3524,19 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       <div style={{ ...S.card, background: C.ink, color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Ta cible quotidienne</div>
+            <div style={{ fontSize: 12, opacity: 0.7, display: "flex", alignItems: "center" }}>
+              Ta cible quotidienne
+              <InfoPop title="Comment est calculée ta cible ?">
+                Ta cible = <b>métabolisme de base × facteur d'activité − déficit</b>.
+                <br /><br />
+                <b>Métabolisme de base</b> ({bmr} kcal) : ce que ton corps brûle au repos pour ses fonctions vitales (respiration, circulation, régulation thermique). Calculé avec la formule <b>Mifflin-St Jeor</b> — la plus précise en clinique.
+                <br /><br />
+                <b>Facteur d'activité</b> : ton activité quotidienne (NEAT) + fréquence de sport.<br />
+                Multiplié = <b>maintenance</b> ({maintenance} kcal) — ce que tu dois manger pour ne pas bouger la balance.
+                <br /><br />
+                <b>Déficit</b> ({maintenance - cible} kcal/jour) : ta cible réelle = maintenance − déficit. Un déficit doux entraîne une perte durable sans épuisement.
+              </InfoPop>
+            </div>
             <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: -1 }}>{cible} <span style={{ fontSize: 16, fontWeight: 500 }}>kcal</span></div>
           </div>
           <div style={{ textAlign: "right", fontSize: 12, opacity: 0.85, lineHeight: 1.8 }}>
@@ -3524,7 +3580,14 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Mon poids actuel</div>
+        <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+          Mon poids actuel
+          <InfoPop title="Pourquoi enregistrer mon poids ?">
+            Ton poids actuel est la variable la plus importante du calcul : il détermine ton métabolisme (Mifflin-St Jeor multiplie 10 × poids). Quand tu perds ou prends du poids, ta cible évolue automatiquement.
+            <br /><br />
+            <b>Quand se peser ?</b> Le matin à jeun, après WC, avant café. 2-3× par semaine suffit. Un jour = une variation d'eau. C'est la <b>tendance sur 2-3 semaines</b> qui compte.
+          </InfoPop>
+        </div>
         <div style={{ ...S.miniMuted, marginBottom: 8, fontSize: 12 }}>Sert au calcul de ta cible calorique. Pèse-toi régulièrement.</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="number" step="0.1" value={nouveau} onChange={(e) => setNouveau(e.target.value)} style={{ ...S.input, flex: 1 }} />
@@ -3539,7 +3602,14 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Poids de départ</div>
+        <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+          Poids de départ
+          <InfoPop title="À quoi sert le poids de départ ?">
+            C'est le point de référence pour l'affichage « depuis le début » (les kg perdus/pris). Il n'entre pas dans le calcul de ta cible calorique — seule ta pesée la plus récente compte pour ça.
+            <br /><br />
+            Modifie-le si tu t'es trompé lors de ton premier enregistrement.
+          </InfoPop>
+        </div>
         <div style={{ ...S.miniMuted, marginBottom: 8, fontSize: 12 }}>Modifie-le si tu t'es trompé au premier enregistrement. Ça n'affecte pas ta cible (calculée sur le poids actuel), juste l'affichage « depuis le début ».</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="number" step="0.1" value={departEdit} onChange={(e) => setDepartEdit(e.target.value)} style={{ ...S.input, flex: 1 }} />
@@ -3563,7 +3633,20 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Activité quotidienne (hors sport)</div>
+        <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+          Activité quotidienne (hors sport)
+          <InfoPop title="Qu'est-ce que le NEAT ?">
+            <b>NEAT</b> (Non-Exercise Activity Thermogenesis) = toutes les calories que tu brûles <b>hors séances de sport</b> : ton métier, tes trajets, tes tâches ménagères, ton mouvement de fond.
+            <br /><br />
+            Un employé de bureau brûle bien moins qu'un serveur ou un ouvrier du BTP — c'est pourquoi ta cible s'ajuste à ta réalité, pas à une moyenne théorique.
+            <br /><br />
+            <b>Multiplicateurs appliqués</b> :<br />
+            · Sédentaire × 1,2<br />
+            · Souvent debout × 1,35<br />
+            · Marche beaucoup × 1,5<br />
+            · Travail physique × 1,65
+          </InfoPop>
+        </div>
         <div style={{ ...S.miniMuted, marginBottom: 10 }}>
           Ton mouvement de fond lié au mode de vie et au métier — sans compter les séances de sport.
         </div>
@@ -3582,7 +3665,18 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Fréquence de sport</div>
+        <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+          Fréquence de sport
+          <InfoPop title="Fréquence de sport vs. activité quotidienne">
+            L'app utilise <b>2 axes</b> qui s'additionnent :
+            <br /><br />
+            <b>1. Activité quotidienne (NEAT)</b> — ton mouvement de fond (métier, courses, ménage). Constante d'un jour à l'autre.
+            <br /><br />
+            <b>2. Fréquence de sport</b> — moyenne de tes séances structurées par semaine. C'est une <b>estimation lissée</b> qui te donne une cible stable.
+            <br /><br />
+            Alternative : active « Créditer le sport » plus bas pour compter chaque séance à sa vraie date (bonus jour par jour). Dans ce cas, remets ici « Aucun / rare » pour ne pas compter deux fois.
+          </InfoPop>
+        </div>
         <div style={{ ...S.miniMuted, marginBottom: 10 }}>
           Tes séances structurées (padel, muscu, course…), en moyenne sur la semaine. Ça s'ajoute à ton activité quotidienne.
         </div>
@@ -3605,7 +3699,19 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       </div>
 
       <div style={S.card}>
-        <div style={S.sectionLabel}>Rythme de perte</div>
+        <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+          Rythme de perte
+          <InfoPop title="Quel déficit choisir ?">
+            <b>1 kg de gras ≈ 7 700 kcal.</b> Pour perdre 0,5 kg/semaine, il faut donc environ 500 kcal de déficit par jour (500 × 7 = 3 500 ≈ ½ kg).
+            <br /><br />
+            <b>Repères</b> :<br />
+            · 250 kcal/j → 0,25 kg/sem (très doux, invisible)<br />
+            · 500 kcal/j → 0,5 kg/sem (recommandé)<br />
+            · 750 kcal/j → 0,75 kg/sem (marche mais dur à tenir)
+            <br /><br />
+            Un <b>déficit modéré (~500)</b> préserve muscle et énergie. Un déficit trop élevé casse la balance hormonale et pousse à craquer — moins d'énergie, plus faim, muscle perdu, effet rebond.
+          </InfoPop>
+        </div>
         <div style={{ display: "flex", gap: 24, alignItems: "baseline", marginBottom: 8 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em" }}>−{profil.deficit}</div>
@@ -3628,7 +3734,16 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
       <div style={S.card}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ maxWidth: "72%" }}>
-            <div style={{ fontWeight: 700 }}>Créditer le sport</div>
+            <div style={{ fontWeight: 700, display: "flex", alignItems: "center" }}>
+              Créditer le sport
+              <InfoPop title="Créditer ou pas ?">
+                <b>Désactivé (recommandé en perte)</b> : ton sport est déjà pris en compte via « Fréquence de sport » plus haut. Ta cible reste stable, peu importe si tu bouges ou pas ce jour-là.
+                <br /><br />
+                <b>Activé</b> : chaque séance loggée s'ajoute à ta cible du jour où tu la fais. Utile si tu veux <b>manger plus les jours actifs</b> et moins les jours de repos.
+                <br /><br />
+                <b>⚠ Piège</b> : les compteurs de calories (Strava, montre) surestiment souvent de 10-20 %. En perte, mieux vaut <b>ne pas créditer</b> ou créditer partiellement (~70 %) pour éviter de « manger tout ce qu'on croit avoir brûlé ». La balance sur 3 semaines te dira si c'est cohérent.
+              </InfoPop>
+            </div>
             <div style={{ ...S.miniMuted, marginTop: 2 }}>Chaque séance loggée s'ajoute à ta cible, le jour où tu la fais.</div>
           </div>
           <button onClick={toggleCredit}
@@ -3659,7 +3774,16 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
               Choisis "sur 5 jours" si tu fais du sport environ 4-5 fois par semaine — ta cible profite du crédit sur les jours "actifs" sans concentrer tout le bonus sur un seul jour.
             </div>
 
-            <div style={S.sectionLabel}>Part du sport créditée : {profil.partSport ?? 70} %</div>
+            <div style={{ ...S.sectionLabel, display: "flex", alignItems: "center" }}>
+              Part du sport créditée : {profil.partSport ?? 70} %
+              <InfoPop title="Pourquoi 70 % et pas 100 % ?">
+                Les kcal/h affichées par ta montre, Strava ou une base MET sont des <b>estimations</b> — souvent surestimées de 10 à 20 %, encore plus sur les sports intermittents (padel, HIIT) ou en environnement chaud.
+                <br /><br />
+                Créditer à <b>70 %</b> = tu appliques une marge de sécurité qui évite de « manger tout ce que tu penses avoir brûlé ». Ça reste motivant tout en gardant la trajectoire de perte.
+                <br /><br />
+                Ajuste selon ton retour balance : si tu perds trop vite → augmente à 80-90 %. Si tu stagnes → descends à 50-60 %.
+              </InfoPop>
+            </div>
             <input type="range" min="0" max="100" step="10" value={profil.partSport ?? 70}
               onChange={(e) => set("partSport")(Number(e.target.value))} style={{ width: "100%", accentColor: C.accent }} />
             <div style={{ ...S.miniMuted, marginTop: 6, lineHeight: 1.55 }}>
@@ -3763,6 +3887,9 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
         </button>
       </div>
 
+      <FAQ />
+
+
       <div style={S.card}>
         <div style={S.sectionLabel}>Sauvegarde</div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -3865,6 +3992,101 @@ function MealPhoto({ photo, onSet, onClear, compact }) {
 function Field({ label, children }) {
   return <div style={{ marginBottom: 12 }}><div style={{ ...S.miniMuted, marginBottom: 4 }}>{label}</div>{children}</div>;
 }
+
+/* Petit "?" cliquable → pop-up avec une explication détaillée. */
+function InfoPop({ title, children }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+  return (
+    <span style={{ position: "relative", display: "inline-block", verticalAlign: "middle" }}>
+      <button onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        title={title || "Plus d'infos"}
+        style={{ marginLeft: 6, width: 16, height: 16, border: `1px solid ${C.divider}`, background: open ? C.accent : "#fff", color: open ? "#fff" : C.muted, fontSize: 10, cursor: "pointer", padding: 0, borderRadius: 0, fontWeight: 800, lineHeight: 1, fontFamily: "'Archivo', sans-serif", display: "inline-grid", placeItems: "center", verticalAlign: "middle" }}>?</button>
+      {open && (
+        <div onClick={(e) => e.stopPropagation()}
+          style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, background: "#fff", border: `2px solid ${C.ink}`, minWidth: 280, maxWidth: 360, padding: 14, zIndex: 40, boxShadow: "0 6px 20px rgba(0,0,0,.12)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 10 }}>
+            {title && <div style={{ fontSize: 13, fontWeight: 800, color: C.ink, letterSpacing: "-0.01em", flex: 1 }}>{title}</div>}
+            <button onClick={() => setOpen(false)} style={{ ...S.del, flexShrink: 0 }}>×</button>
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{children}</div>
+        </div>
+      )}
+    </span>
+  );
+}
+const FAQ_ITEMS = [
+  {
+    q: "Comment est calculée ma cible calorique ?",
+    a: "Elle est calculée en 3 étapes : (1) ton métabolisme de base via la formule Mifflin-St Jeor (utilise poids, taille, âge, sexe) ; (2) multiplication par ton facteur d'activité (NEAT × sport) pour obtenir ta maintenance ; (3) soustraction du déficit choisi. Résultat : la cible affichée en haut du Profil. Toutes les variables sont modifiables et le calcul se refait instantanément.",
+  },
+  {
+    q: "Pourquoi la formule Mifflin-St Jeor ?",
+    a: "C'est la formule la plus précise pour la population générale (~5 % plus précise que Harris-Benedict d'après les études). Elle est standardisée en clinique et ne demande que 4 variables faciles à mesurer (poids, taille, âge, sexe). Elle sous-estime légèrement chez les personnes très musclées (Katch-McArdle serait alors plus juste, mais nécessite le taux de masse grasse).",
+  },
+  {
+    q: "Est-ce grave si je dépasse ma cible un jour ?",
+    a: "Non. Une journée ne fait ni ne défait la perte de poids : c'est la moyenne sur 7-14 jours qui compte. 500 kcal de dépassement un jour = 70 kcal de plus par jour lissés sur la semaine, soit environ 10 g de gras. Le vrai risque, c'est de baisser les bras après un écart. Continue normalement le lendemain.",
+  },
+  {
+    q: "Comment savoir si mon rythme est le bon ?",
+    a: "Compare la projection (dans Graphique > Bilan 7 j) avec ce que dit ta balance sur 2-3 semaines. Si l'écart réel de la balance est plus lent que la projection → tu manges plus que tu ne crois ou tu bouges moins. Ajuste de 100-200 kcal. Ne juge jamais sur 3 jours : les variations d'eau et de glycogène brouillent le signal.",
+  },
+  {
+    q: "Puis-je perdre plus vite qu'0,5 kg / semaine ?",
+    a: "Oui mais pas conseillé. Au-delà de 0,7-1 kg/sem, tu perds surtout du muscle et de l'eau, tu affames ton métabolisme, tu craques plus vite, et l'effet rebond est quasi garanti à la reprise. Un déficit modéré (500 kcal/j) sur 2-3 mois donne des résultats plus stables qu'un régime « choc » sur 2 semaines.",
+  },
+  {
+    q: "Faut-il compter les calories brûlées en sport ?",
+    a: "Deux écoles. Option 1 (conseillée en perte) : les compter en amont via « Fréquence de sport » — ta cible reste stable. Option 2 : activer « Créditer le sport » — les kcal des séances loggées s'ajoutent à ta cible du jour. C'est motivant mais risqué car les compteurs de montre surestiment de 10-20 %. En perte, garde une marge (créditer à 70 %).",
+  },
+  {
+    q: "Pourquoi mes protéines ont-elles une cible spéciale ?",
+    a: "1,8 g/kg de poids corporel = suffisant pour préserver le muscle en déficit calorique (études sur athlètes et populations en régime hypocalorique). Le muscle est ton meilleur allié : il maintient ton métabolisme, sculpte ta silhouette, protège les articulations. Vise ce chiffre en priorité — les glucides et lipides suivent selon ce qui reste.",
+  },
+  {
+    q: "Le scan de code-barres ne marche pas — que faire ?",
+    a: "Sur iPhone (Safari) et sur beaucoup de PC, le lecteur caméra direct n'est pas dispo (limitation du navigateur, pas de l'app). Solutions : (1) prendre une photo du code-barres avec le bouton « Choisir / prendre une photo » dans la fenêtre du scanner ; (2) taper les 13 chiffres à la main. Le produit sera cherché dans Open Food Facts dans les 3 cas.",
+  },
+  {
+    q: "Mes données sont-elles privées ?",
+    a: "Oui. Tes repas, poids, sport et réglages sont stockés dans ton espace Firestore privé (accessible uniquement avec ton mot de passe). Seuls les codes-barres et aliments encodés à la main sont partagés dans une base commune anonymisée (pour que la liste grossisse pour tout le monde). Aucune donnée personnelle nominative n'y figure.",
+  },
+  {
+    q: "Comment repartir à zéro / changer d'objectif ?",
+    a: "Modifier tes cibles : Profil → change poids, objectif, activité, déficit. Le calcul se refait immédiatement, sans perdre l'historique. Repartir à zéro complètement : Profil → Sauvegarde → « Réinitialiser toutes les données » (irréversible — pense à exporter d'abord).",
+  },
+];
+
+function FAQ() {
+  const [open, setOpen] = useState(null);
+  return (
+    <div style={S.cardFramed}>
+      <div style={{ ...S.kicker }}>FAQ — QUESTIONS COURANTES</div>
+      <div style={S.kickerTrait} />
+      {FAQ_ITEMS.map((it, i) => (
+        <div key={i} style={{ borderTop: i === 0 ? "none" : `1px solid ${C.divider}` }}>
+          <button onClick={() => setOpen((o) => (o === i ? null : i))}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: "14px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "'Archivo', sans-serif" }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: open === i ? C.accent : C.ink, flex: 1, paddingRight: 12 }}>{it.q}</span>
+            <span style={{ fontSize: 20, fontWeight: 700, color: C.accent, width: 20, textAlign: "center", flexShrink: 0 }}>{open === i ? "−" : "+"}</span>
+          </button>
+          {open === i && (
+            <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, paddingBottom: 14, paddingRight: 32 }}>
+              {it.a}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MacroPill({ label, v, cible, min, unit, couleur }) {
   return (
     <div style={{ flex: 1, background: "#F6F8F3", border: "1.5px solid #E0E6DA", borderRadius: 12, padding: "8px 10px" }}>
