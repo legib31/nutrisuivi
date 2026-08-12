@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "2.9";
+const VERSION = "3.0";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -737,6 +737,8 @@ export default function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [monthReviewSeen, setMonthReviewSeen] = useState("");
   const [sharedFoods, setSharedFoods] = useState([]);
+  const [badgesSeen, setBadgesSeen] = useState([]);
+  const [lastWeekAI, setLastWeekAI] = useState(null);
 
   const allSports = useMemo(() => [...SPORTS, ...customSports], [customSports]);
 
@@ -795,6 +797,8 @@ export default function App() {
       setShowSetup(!(await sget("nutri:setup_done", false)));
       setShowOnboarding(!(await sget("nutri:onboarding_done", false)));
       setMonthReviewSeen(await sget("nutri:monthReviewSeen", ""));
+      setBadgesSeen(await sget("nutri:badgesSeen", []));
+      setLastWeekAI(await sget("nutri:lastWeekAI", null));
       setLoaded(true);
       // Charge la base d'aliments partagée (asynchrone, non bloquant).
       if (typeof window !== "undefined" && window.NUTRI_SHARED_FOODS) {
@@ -829,6 +833,27 @@ export default function App() {
   useEffect(() => { if (loaded) sset("nutri:customsports", customSports); }, [customSports, loaded]);
   useEffect(() => { if (loaded) sset("nutri:favmeals", favMeals); }, [favMeals, loaded]);
   useEffect(() => { if (loaded) sset("nutri:water", water); }, [water, loaded]);
+  useEffect(() => { if (loaded) sset("nutri:badgesSeen", badgesSeen); }, [badgesSeen, loaded]);
+  useEffect(() => { if (loaded) sset("nutri:lastWeekAI", lastWeekAI); }, [lastWeekAI, loaded]);
+
+  /* Détection de déblocage de badges → notification locale + toast. */
+  useEffect(() => {
+    if (!loaded) return;
+    const stats = computeBadgeStats({ diary, profil, poidsLog, customFoods, favMeals, sport });
+    const unlockedIds = BADGES.filter((b) => b.test(stats)).map((b) => b.id);
+    const newlyUnlocked = unlockedIds.filter((id) => !badgesSeen.includes(id));
+    if (newlyUnlocked.length) {
+      const first = BADGES.find((b) => b.id === newlyUnlocked[0]);
+      if (first) {
+        try {
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("🏆 Badge débloqué !", { body: first.t + " — " + first.d });
+          }
+        } catch {}
+      }
+      setBadgesSeen((prev) => [...prev, ...newlyUnlocked]);
+    }
+  }, [diary, profil, poidsLog, customFoods, favMeals, sport, loaded]);
 
   // Rappels : notifications quand l'app est ouverte (arrière-plan une fois installée en PWA).
   useEffect(() => {
@@ -1106,7 +1131,9 @@ export default function App() {
         {tab === "semaine" && (
           <div style={{ maxWidth: isDesktop ? 760 : "none", margin: "0 auto" }}>
             <Semaine diary={diary} sport={sport} poidsLog={poidsLog} water={water}
-              cible={cible} waterGoal={profil.waterGoal ?? 8} />
+              cible={cible} cibleProt={cibleProt} cibleLipMin={cibleLipMin}
+              waterGoal={profil.waterGoal ?? 8}
+              lastWeekAI={lastWeekAI} setLastWeekAI={setLastWeekAI} />
           </div>
         )}
         {tab === "liste" && (
@@ -1114,7 +1141,8 @@ export default function App() {
             <Liste catalog={catalog} customFoods={customFoods} setCustomFoods={setCustomFoods}
               customSports={customSports} setCustomSports={setCustomSports} poids={profil.poids}
               favMeals={favMeals} onDeleteFavorite={deleteFavorite} onRenameFavorite={renameFavorite}
-              onUpdateFavorite={updateFavorite} />
+              onUpdateFavorite={updateFavorite}
+              sharedCount={sharedFoods.length} totalCount={catalog.length} />
           </div>
         )}
         {tab === "graphique" && (
@@ -1128,7 +1156,8 @@ export default function App() {
             <Profil profil={profil} setProfil={setProfil} bmr={bmr} maintenance={maintenance}
               cible={cible} cibleProt={cibleProt} poidsLog={poidsLog} setPoidsLog={setPoidsLog}
               onExport={exportData} onExportCSV={exportCSV} onImport={importData} onReset={resetAll}
-              onReplayTutorial={() => setShowOnboarding(true)} />
+              onReplayTutorial={() => setShowOnboarding(true)}
+              diary={diary} customFoods={customFoods} favMeals={favMeals} sport={sport} />
           </div>
         )}
           </main>
@@ -1900,6 +1929,50 @@ Règles : "grams" = poids estimé de la portion visible ; "kcal","p","c","f","fi
   return Array.isArray(arr) ? arr : [];
 }
 
+/* Génère un mini bilan pédagogique de la semaine via l'IA (nutrition + timing + points forts/faibles). */
+async function analyseWeekIA({ days, diary, sport, cible, cibleProt, cibleLipMin, weightDelta }) {
+  const perDay = days.map((d) => {
+    const items = diary[d] || [];
+    const s = sommeMacros(items);
+    const parRepas = {};
+    for (const e of items) {
+      const r = e.repas || "autre";
+      if (!parRepas[r]) parRepas[r] = 0;
+      parRepas[r] += e.kcal || 0;
+    }
+    const sp = (sport[d] || []).map((x) => `${x.nom} ${x.minutes}min`).join(", ");
+    return {
+      date: d,
+      kcal: Math.round(s.kcal),
+      p: Math.round(s.p), c: Math.round(s.c), f: Math.round(s.f),
+      fib: Math.round(s.fib), suc: Math.round(s.suc),
+      repas: Object.fromEntries(Object.entries(parRepas).map(([k, v]) => [k, Math.round(v)])),
+      sport: sp || null,
+    };
+  });
+  const prompt = `Tu es nutritionniste avisé. J'ai suivi ma semaine — voici mes données jour par jour :
+${JSON.stringify(perDay, null, 2)}
+
+Cible/jour : ${cible} kcal, ${cibleProt}g de protéines, ≥${cibleLipMin}g de lipides.
+Variation de poids sur la semaine : ${weightDelta === null ? "non mesurée" : weightDelta + " kg"}.
+
+Rédige un bilan court (150-220 mots MAX) en 3 parties séparées par un saut de ligne :
+1. **Ce qui a marché** (1-2 phrases concrètes basées sur mes chiffres).
+2. **Ce qui accroche** (1-2 phrases sur un point d'attention réel : timing des repas, macro déséquilibrée, jour à trou…).
+3. **Une action simple pour la semaine prochaine** (1 phrase actionnable).
+
+Ton bienveillant, direct, sans jargon. Utilise le tutoiement. Aucun préambule ni disclaimer. Français.`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600,
+      messages: [{ role: "user", content: [{ type: "text", text: prompt }] }] }),
+  });
+  const data = await response.json();
+  const text = (data.content || []).map((i) => (i.type === "text" ? i.text : "")).join("").trim();
+  return text;
+}
+
 async function estimateFromText(txt) {
   const prompt = `Tu es nutritionniste. La personne décrit ce qu'elle a mangé. Découpe en aliments distincts avec leur quantité en grammes.
 Réponds UNIQUEMENT en JSON (aucun texte, pas de Markdown) :
@@ -2156,6 +2229,7 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
   const [photoOpen, setPhotoOpen] = useState(false);
   const [freeOpen, setFreeOpen] = useState(false);
   const [addedCount, setAddedCount] = useState(0);
+  const [thanksMsg, setThanksMsg] = useState("");
   const fileRef = useRef();
 
   function startCreate() { setNf({ nom: q, grp: "proteine" }); setCreating(true); }
@@ -2163,6 +2237,10 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
     if (!nf.nom || !nf.kcal) return;
     const food = onCreateFood(nf);
     setSel(food); setQ(food.nom); setCreating(false);
+    setThanksMsg(nf.code
+      ? "✨ Merci ! Ce produit rejoint la base commune — chaque autre utilisateur y a maintenant accès."
+      : "✨ Merci ! Ton aliment rejoint la base commune — il profite à tous.");
+    setTimeout(() => setThanksMsg(""), 4200);
   }
 
   const nq = norm(q);
@@ -2216,6 +2294,7 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
           <div style={{ fontWeight: 800, fontSize: 17 }}>
             Ajouter · {jolieDate(date)}
             {addedCount > 0 && <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: "#fff", background: C.green, borderRadius: 10, padding: "2px 8px" }}>{addedCount} ajouté{addedCount > 1 ? "s" : ""}</span>}
+            {thanksMsg && <div style={{ fontSize: 12, color: C.accent, background: C.accentTint, padding: "6px 10px", marginTop: 8, lineHeight: 1.4, fontWeight: 600 }}>{thanksMsg}</div>}
           </div>
           <button style={S.del} onClick={onClose}>{addedCount > 0 ? "Terminé" : "×"}</button>
         </div>
@@ -2579,7 +2658,7 @@ function SportSheet({ sports, poids, date, onClose, onAdd, onCreate }) {
 }
 
 /* ============================= LISTE ============================= */
-function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite, onUpdateFavorite }) {
+function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite, onUpdateFavorite, sharedCount = 0, totalCount = 0 }) {
   const [view, setView] = useState("aliments");
   const [q, setQ] = useState("");
   const [form, setForm] = useState(null);
@@ -2640,6 +2719,19 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
             <Scanner onClose={() => setScanOpen(false)}
               onResult={(prod) => { setForm({ ...prod, grp: prod.grp || "plat" }); setScanOpen(false); }} />
           )}
+
+          {/* Banner communauté : base commune qui grossit */}
+          <div style={{ background: C.accentTint, border: `2px solid ${C.accent}`, padding: "14px 16px", marginBottom: 6 }}>
+            <div style={{ ...S.kicker, color: C.accent, marginBottom: 6 }}>BASE COMMUNAUTAIRE</div>
+            <div style={{ fontSize: 14, color: C.ink, lineHeight: 1.5 }}>
+              <b style={{ fontSize: 22, fontWeight: 800, color: C.accent, letterSpacing: "-0.02em", marginRight: 4 }}>{totalCount.toLocaleString("fr-BE")}</b>
+              aliments dans ta liste{sharedCount > 0 && <> · dont <b>{sharedCount.toLocaleString("fr-BE")} scannés par la communauté</b></>}.
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6, lineHeight: 1.55 }}>
+              Chaque code-barres que tu scannes ou aliment que tu encodes rejoint la base commune — <b>ta contribution enrichit la liste de tous</b>.
+            </div>
+          </div>
+
 
           {form && (
             <div style={S.card}>
@@ -3321,6 +3413,42 @@ function monthlyReview(diary, sport, poidsLog, year, month) {
   return { avgKcal, daysLogged, totalSport: Math.round(totalSport), sessions, kgDelta, monthName: moisNom[month], year, nbDays };
 }
 
+/* Badges : évaluation client-only à partir de l'état de l'app. */
+const BADGES = [
+  { id: "streak7",     t: "Une semaine sans faille",     d: "7 jours consécutifs sous la cible.",           test: (s) => s.streak >= 7 },
+  { id: "streak30",    t: "30 jours d'affilée",          d: "30 jours consécutifs sous la cible.",          test: (s) => s.streak >= 30 },
+  { id: "logged7",     t: "Une semaine complète loggée", d: "Tu as loggé au moins un repas 7 jours d'affilée.", test: (s) => s.loggedDays >= 7 },
+  { id: "logged30",    t: "Un mois de suivi",            d: "30 jours différents avec au moins un repas loggé.", test: (s) => s.loggedDays >= 30 },
+  { id: "kg1lost",     t: "Premier kilo",                d: "Ton poids actuel est 1 kg sous ton départ.",   test: (s) => s.kgLost >= 1 },
+  { id: "kg5lost",     t: "5 kilos allégé",              d: "Ton poids actuel est 5 kg sous ton départ.",   test: (s) => s.kgLost >= 5 },
+  { id: "objectif",    t: "Objectif atteint",            d: "Tu es à ton poids objectif — ou en dessous.",  test: (s) => s.reachedGoal },
+  { id: "list100",     t: "Catalogue riche",             d: "100 aliments persos dans ta liste.",           test: (s) => s.customFoodsCount >= 100 },
+  { id: "recipe1",     t: "Chef à la maison",            d: "Ta première recette maison enregistrée.",      test: (s) => s.recipesCount >= 1 },
+  { id: "recipe10",    t: "Livre de cuisine",            d: "10 recettes maison créées.",                   test: (s) => s.recipesCount >= 10 },
+  { id: "fav5",        t: "Habitudes bien huilées",      d: "5 repas favoris enregistrés.",                 test: (s) => s.favMealsCount >= 5 },
+  { id: "sport10",     t: "Sportif régulier",            d: "10 séances de sport loggées.",                 test: (s) => s.sportSessions >= 10 },
+  { id: "shared50",    t: "Contributeur communauté",     d: "50 codes-barres scannés ou aliments ajoutés à la base commune.", test: (s) => s.sharedContribs >= 50 },
+  { id: "shared200",   t: "Pilier de la base commune",   d: "200 contributions à la base partagée.",        test: (s) => s.sharedContribs >= 200 },
+];
+
+function computeBadgeStats({ diary, profil, poidsLog, customFoods, favMeals, sport }) {
+  const cible = Math.max(1400, (profil.deficit ? (Math.round(mifflin(profil) * (neatF(profil) + sportB(profil))) - profil.deficit) : 0));
+  const streak = streakUnderTarget(diary, cible);
+  const loggedDays = Object.keys(diary || {}).filter((d) => (diary[d] || []).length > 0).length;
+  const sortedLog = [...(poidsLog || [])].sort((a, b) => a.date.localeCompare(b.date));
+  const depart = sortedLog[0]?.poids || 0;
+  const dernier = sortedLog[sortedLog.length - 1]?.poids || 0;
+  const kgLost = depart && dernier ? +(depart - dernier).toFixed(1) : 0;
+  const reachedGoal = dernier && profil.objectif && dernier <= profil.objectif;
+  const customFoodsCount = (customFoods || []).filter((f) => !Array.isArray(f.ingredients)).length;
+  const recipesCount = (customFoods || []).filter((f) => Array.isArray(f.ingredients) && f.ingredients.length).length;
+  const favMealsCount = (favMeals || []).length;
+  const sportSessions = Object.values(sport || {}).reduce((a, arr) => a + (arr || []).length, 0);
+  // Approx : chaque aliment personnalisé compte comme une contribution ; extension : lire un compteur Firestore plus tard.
+  const sharedContribs = customFoodsCount + recipesCount;
+  return { streak, loggedDays, kgLost, reachedGoal, customFoodsCount, recipesCount, favMealsCount, sportSessions, sharedContribs };
+}
+
 function kcalWeekly(diary, weeks) {
   const dow = (new Date(todayISO()).getDay() + 6) % 7;          // 0 = lundi
   const startMonday = shiftDate(todayISO(), -dow - (weeks - 1) * 7);
@@ -3447,7 +3575,7 @@ function poidsDataFn(log, gran, span) {
 }
 
 /* ============================= PROFIL =========================== */
-function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLog, setPoidsLog, onExport, onExportCSV, onImport, onReset, onReplayTutorial }) {
+function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLog, setPoidsLog, onExport, onExportCSV, onImport, onReset, onReplayTutorial, diary, customFoods, favMeals, sport }) {
   const [nouveau, setNouveau] = useState(profil.poids);
   const sortedLog = [...(poidsLog || [])].sort((a, b) => a.date.localeCompare(b.date));
   const [departEdit, setDepartEdit] = useState(sortedLog[0] ? String(sortedLog[0].poids) : "");
@@ -3887,6 +4015,9 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
         </button>
       </div>
 
+      <BadgesCard diary={diary} profil={profil} poidsLog={poidsLog}
+        customFoods={customFoods} favMeals={favMeals} sport={sport} />
+
       <FAQ />
 
 
@@ -4063,6 +4194,34 @@ const FAQ_ITEMS = [
   },
 ];
 
+function BadgesCard({ diary, profil, poidsLog, customFoods, favMeals, sport }) {
+  const stats = useMemo(() => computeBadgeStats({ diary, profil, poidsLog, customFoods, favMeals, sport }),
+    [diary, profil, poidsLog, customFoods, favMeals, sport]);
+  const unlocked = BADGES.filter((b) => b.test(stats));
+  const locked = BADGES.filter((b) => !b.test(stats));
+
+  const Card = ({ b, on }) => (
+    <div style={{ padding: 12, border: `1px solid ${on ? C.accent : C.divider}`, background: on ? C.accentTint : "#fff", opacity: on ? 1 : 0.55 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: on ? C.accent : C.muted }}>
+        {on ? "✓ DÉBLOQUÉ" : "À DÉBLOQUER"}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: C.ink, marginTop: 4, letterSpacing: "-0.01em" }}>{b.t}</div>
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 4, lineHeight: 1.5 }}>{b.d}</div>
+    </div>
+  );
+
+  return (
+    <div style={S.cardFramed}>
+      <div style={S.kicker}>BADGES · {unlocked.length}/{BADGES.length}</div>
+      <div style={S.kickerTrait} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 10 }}>
+        {unlocked.map((b) => <Card key={b.id} b={b} on={true} />)}
+        {locked.map((b) => <Card key={b.id} b={b} on={false} />)}
+      </div>
+    </div>
+  );
+}
+
 function FAQ() {
   const [open, setOpen] = useState(null);
   return (
@@ -4123,8 +4282,9 @@ const SLIDES = [
   { key: "welcome", t: "Bienvenue sur NutriSuivi", d: "Ton carnet nutritionnel simple et honnête. Suis tes repas et ton poids sans te prendre la tête — et sans chiffres gravés dans le marbre." },
   { key: "agenda", t: "L'agenda du jour", d: "Chaque jour : ta cible en gros chiffre, tes 4 repas (Déjeuner, Collation, Dîner, Souper) et ton sport. Une jauge sous ta cible te dit visuellement où tu en es." },
   { key: "add", t: "Ajouter un repas — 4 façons", d: "Liste officielle (valeurs vérifiées par CIQUAL — la base nutritionnelle de l'ANSES, agence française de sécurité alimentaire), code-barres, estimation par photo (IA), ou saisie libre. Les portions courantes s'affichent en un tap : « 1 pot = 150 g », « 1 part = 250 g »." },
-  { key: "scan", t: "Le code-barres : LA méthode la plus rapide", d: "Un tap → tu vises le code-barres au dos du produit → l'app va chercher dans Open Food Facts (base collaborative de +3M produits, belges inclus) et te propose une fiche prête à valider en 2 secondes. C'est la méthode la plus fiable et rapide pour tes produits emballés (yaourt, céréales, biscuits, plats préparés…)." },
-  { key: "database", t: "Une base d'aliments qui grossit à chaque scan — pour toi ET pour tous", d: "Chaque code-barres scanné ou aliment encodé à la main rejoint une base commune à tous les utilisateurs. Résultat : plus on est nombreux, plus ta liste grossit toute seule. Le lendemain d'installation, tu retrouves déjà les yaourts, céréales et plats préparés scannés par d'autres. C'est ça, la force d'une communauté qui construit ensemble : le scan est LA méthode la plus précise, et chaque contribution profite à tout le monde." },
+  { key: "scan", t: "🎯 LE code-barres : la méthode la plus PRÉCISE, point.", d: "Photo ou scan live du code-barres → l'app va chercher dans Open Food Facts (+3M produits, belges inclus) et te propose une fiche prête à valider en 2 secondes, avec des valeurs vérifiées par le fabricant. C'est le seul moyen d'être sûr à 100 % de tes chiffres — pas d'estimation, pas d'IA, pas de doute. Pour tes yaourts, céréales, biscuits, plats préparés → toujours scanner." },
+  { key: "database", t: "🌍 Ta liste grossit toute seule, grâce à toi et grâce aux autres", d: "Chaque produit scanné ou encodé rejoint une base commune à tous les utilisateurs. Résultat : plus on est nombreux, plus ta liste grossit sans que tu fasses rien. Le lendemain d'installation, tu retrouves déjà les produits scannés par d'autres. C'est LA killer feature : le scan est ultra-précis, la communauté s'entraide, et ta contribution (même une !) enrichit la base pour tous. Plus l'appli grandit, plus elle devient utile." },
+  { key: "weeklyAI", t: "✨ Analyse IA hebdo — un coach à ton poignet", d: "Chaque semaine, un mini bilan pédagogique généré par une IA nutritionniste : ce qui a marché, ce qui accroche, une action concrète pour la semaine suivante. Basé sur TES vraies données (repas, sport, poids), pas des généralités. C'est comme avoir un coach qui relit ton carnet et te souligne les 3 choses importantes — sans jargon, sans culpabilisation." },
   { key: "graph", t: "Le graphique", d: "Suis tes calories, ton bilan net (mangé − dépensé), ta courbe de poids lissée et le déficit creusé par ton sport — par semaine ou par mois. Ligne pointillée = ta cible." },
   { key: "profil", t: "Ton profil", d: "Ta cible se calcule à partir de ton profil (poids, taille, âge, activité, sport) — pas d'algorithme mystère. Le sport te récompense par des résultats concrets — physique plus tonique, muscle préservé — plus que par une assiette en plus. Pèse-toi régulièrement pour ajuster : c'est la tendance sur 2-3 semaines qui compte, jamais le chiffre d'un jour." },
 ];
@@ -4296,6 +4456,36 @@ function SlideVisual({ slideKey }) {
         {/* Bandeau bas */}
         <line x1="16" y1="160" x2={W - 16} y2="160" stroke={divider} strokeWidth="2" />
         <text x={W/2} y="180" textAnchor="middle" fontSize="10" fontWeight="700" fill={ink}>+ de scans par la communauté = ta liste qui grossit toute seule</text>
+      </>
+    );
+  }
+
+  if (slideKey === "weeklyAI") {
+    return wrap(
+      <>
+        <rect x="0" y="0" width={W} height={H} fill="#fff" />
+        <text x="16" y="20" fontSize="9" fontWeight="700" fill={accent} letterSpacing="0.14em">ANALYSE IA · SEMAINE 33</text>
+        <rect x="16" y="24" width="30" height="2" fill={accent} />
+
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.1s backwards" }}>
+          <text x="16" y="52" fontSize="8" fontWeight="700" fill={accent} letterSpacing="0.1em">✓ CE QUI A MARCHÉ</text>
+          <text x="16" y="66" fontSize="10" fill={ink}>Cible respectée 6/7 jours,</text>
+          <text x="16" y="78" fontSize="10" fill={ink}>protéines top (moy 158 g).</text>
+        </g>
+        <line x1="16" y1="90" x2="304" y2="90" stroke={divider} />
+
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.35s backwards" }}>
+          <text x="16" y="106" fontSize="8" fontWeight="700" fill={accent} letterSpacing="0.1em">⚠ CE QUI ACCROCHE</text>
+          <text x="16" y="120" fontSize="10" fill={ink}>Les soirées glissent :</text>
+          <text x="16" y="132" fontSize="10" fill={ink}>+210 kcal en moy après 19h.</text>
+        </g>
+        <line x1="16" y1="144" x2="304" y2="144" stroke={divider} />
+
+        <g style={{ animation: "ns-fade-up 0.6s ease-out 0.6s backwards" }}>
+          <text x="16" y="160" fontSize="8" fontWeight="700" fill={accent} letterSpacing="0.1em">→ ACTION SIMPLE</text>
+          <text x="16" y="174" fontSize="10" fill={ink}>Décale ta collation à 16h30</text>
+          <text x="16" y="186" fontSize="10" fill={ink}>pour couper la faim du soir.</text>
+        </g>
       </>
     );
   }
@@ -4579,7 +4769,57 @@ function exportSemaineImage({ days, diary, sport, water, cible, waterGoal, weekL
   }, "image/jpeg", 0.92);
 }
 
-function Semaine({ diary, sport, poidsLog, water, cible, waterGoal }) {
+function WeeklyAI({ days, diary, sport, cible, cibleProt, cibleLipMin, weightDelta, lastWeekAI, setLastWeekAI }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const weekKey = days[0]; // clé = lundi de la semaine affichée
+  const saved = lastWeekAI && lastWeekAI.week === weekKey ? lastWeekAI.text : null;
+
+  async function generate() {
+    setBusy(true); setErr("");
+    try {
+      const txt = await analyseWeekIA({ days, diary, sport, cible, cibleProt, cibleLipMin, weightDelta });
+      if (!txt) throw new Error("Réponse vide");
+      setLastWeekAI({ week: weekKey, text: txt, generatedAt: Date.now() });
+    } catch (e) {
+      setErr("L'analyse IA n'est pas disponible ici (pont serveur manquant en prod, ou pas de réseau). Elle fonctionnera dès que le pont Anthropic sera activé.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div style={{ ...S.cardFramed, borderColor: C.accent }}>
+      <div style={{ ...S.kicker, color: C.accent }}>ANALYSE IA — TA SEMAINE</div>
+      <div style={S.kickerTrait} />
+      {saved ? (
+        <>
+          <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{saved}</div>
+          <button onClick={generate} disabled={busy}
+            style={{ marginTop: 14, padding: "10px 16px", border: `1px solid ${C.divider}`, background: "#fff", color: C.accent, cursor: busy ? "wait" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "'Archivo', sans-serif" }}>
+            {busy ? "Analyse en cours…" : "🔄 Regénérer"}
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 12 }}>
+            Un mini bilan pédagogique de ta semaine par une IA nutritionniste : ce qui a marché, ce qui accroche, et une action simple pour la suite.
+          </div>
+          <button onClick={generate} disabled={busy}
+            style={{ ...S.primaryBtn, marginTop: 0, opacity: busy ? 0.6 : 1 }}>
+            {busy ? "Analyse en cours…" : "✨ Générer l'analyse de la semaine"}
+          </button>
+        </>
+      )}
+      {err && (
+        <div style={{ ...S.miniMuted, fontSize: 12, marginTop: 10, color: C.negative, lineHeight: 1.5 }}>
+          {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin, waterGoal, lastWeekAI, setLastWeekAI }) {
   const [offset, setOffset] = useState(0); // 0 = semaine courante, -1 = semaine précédente, etc.
   const today = todayISO();
   const dow = (new Date(today).getDay() + 6) % 7;
@@ -4667,6 +4907,10 @@ function Semaine({ diary, sport, poidsLog, water, cible, waterGoal }) {
         <Stat label="DÉFICIT SPORT" value={`${sportKcal} kcal`} sub={`≈ ${Math.round(sportKcal / 7.7)} g de gras`} color={C.accent} />
         <Stat label="HYDRATATION" value={`${waterAvg.toFixed(1).replace(".", ",")} / ${waterGoal}`} sub="verres/jour en moyenne" color={C.accent} />
       </div>
+
+      <WeeklyAI days={days} diary={diary} sport={sport}
+        cible={cible} cibleProt={cibleProt} cibleLipMin={cibleLipMin} weightDelta={weightDelta}
+        lastWeekAI={lastWeekAI} setLastWeekAI={setLastWeekAI} />
 
       <button onClick={() => exportSemaineImage({ days, diary, sport, water, cible, waterGoal, weekLabel, weightDelta, avgKcal, inTarget, logged: logged.length, sportKcal, waterAvg, fmtDay })}
         style={{ ...S.addDayBtn, marginTop: 4 }}>
