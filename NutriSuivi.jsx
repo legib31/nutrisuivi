@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.3";
+const VERSION = "3.4";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1153,7 +1153,8 @@ export default function App() {
         {tab === "graphique" && (
           <div style={{ maxWidth: isDesktop ? 760 : "none", margin: "0 auto" }}>
             <Graphique diary={diary} cible={cible} poidsLog={poidsLog} objectif={profil.objectif} sport={sport}
-              maintenance={maintenance} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60} />
+              maintenance={maintenance} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
+              sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7} />
           </div>
         )}
         {tab === "profil" && (
@@ -3569,7 +3570,7 @@ function NumIn({ label, v, on }) {
 }
 
 /* =========================== GRAPHIQUE ========================== */
-function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, crediterSport, partSport }) {
+function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, crediterSport, partSport, sportMode, sportSpreadDays }) {
   const [metric, setMetric] = useState("calories"); // calories | net | poids
   const [gran, setGran] = useState("semaine");       // semaine | mois
   const [zoom, setZoom] = useState(0);               // index dans les fenêtres
@@ -3582,9 +3583,11 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
   const data = useMemo(() => {
     if (metric === "poids") return poidsDataFn(poidsLog, gran, span);
     if (metric === "sport") return gran === "semaine" ? sportByWeek(sport, span) : sportByMonth(sport, span);
-    if (metric === "net") return gran === "semaine" ? netWeekly(diary, sport, span) : netMonthly(diary, sport, span);
+    if (metric === "net") return gran === "semaine"
+      ? netWeekly(diary, sport, span, partSport, sportMode, sportSpreadDays, crediterSport)
+      : netMonthly(diary, sport, span, partSport, sportMode, sportSpreadDays, crediterSport);
     return gran === "semaine" ? kcalWeekly(diary, span) : kcalMonthly(diary, span);
-  }, [metric, gran, span, diary, sport, poidsLog]);
+  }, [metric, gran, span, diary, sport, poidsLog, partSport, sportMode, sportSpreadDays, crediterSport]);
 
   const bilan = useMemo(() => {
     let intake = 0, sportK = 0, days = 0;
@@ -3921,7 +3924,7 @@ function kcalMonthly(diary, spanMonths) {
   });
   return buckets.map((b) => ({ label: moisNom[b.m], v: b.days ? Math.round(b.total / b.days) : 0 }));
 }
-function netWeekly(diary, sport, weeks) {
+function netWeekly(diary, sport, weeks, partSport = 70, sportMode = "jour", spreadDays = 7, crediterSport = false) {
   const dow = (new Date(todayISO()).getDay() + 6) % 7;
   const startMonday = shiftDate(todayISO(), -dow - (weeks - 1) * 7);
   const arr = [];
@@ -3930,7 +3933,7 @@ function netWeekly(diary, sport, weeks) {
     const dt = new Date(d);
     const wd = joursCourt[dt.getDay()];
     const cons = Math.round(sommeMacros(diary[d]).kcal);
-    const burn = Math.round(sommeSport(sport[d]));
+    const burn = crediterSport ? creditedKcal(d, sport, partSport, sportMode, spreadDays) : Math.round(sommeSport(sport[d]) * (partSport / 100));
     arr.push({
       label: i === 0 ? `${wd} ${dt.getDate()}/${dt.getMonth() + 1}` : wd,
       v: cons === 0 ? 0 : cons - burn, date: d,
@@ -3938,19 +3941,26 @@ function netWeekly(diary, sport, weeks) {
   }
   return arr;
 }
-function netMonthly(diary, sport, spanMonths) {
+function netMonthly(diary, sport, spanMonths, partSport = 70, sportMode = "jour", spreadDays = 7, crediterSport = false) {
   const now = new Date();
   const buckets = [];
   for (let i = spanMonths - 1; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     buckets.push({ y: d.getFullYear(), m: d.getMonth(), total: 0, days: 0 });
   }
-  Object.entries(diary).forEach(([date, entries]) => {
-    const cons = sommeMacros(entries).kcal;
+  // Pour le mensuel on itère sur toutes les dates avec des données
+  const allDates = new Set([
+    ...Object.keys(diary),
+    ...Object.keys(sport),
+  ]);
+  allDates.forEach((date) => {
+    const cons = sommeMacros(diary[date]).kcal;
     if (cons <= 0) return;
     const dt = new Date(date);
     const b = buckets.find((x) => x.y === dt.getFullYear() && x.m === dt.getMonth());
-    if (b) { b.total += cons - sommeSport(sport[date]); b.days += 1; }
+    if (!b) return;
+    const burn = crediterSport ? creditedKcal(date, sport, partSport, sportMode, spreadDays) : Math.round(sommeSport(sport[date]) * (partSport / 100));
+    b.total += cons - burn; b.days += 1;
   });
   return buckets.map((b) => ({ label: moisNom[b.m], v: b.days ? Math.round(b.total / b.days) : 0 }));
 }
