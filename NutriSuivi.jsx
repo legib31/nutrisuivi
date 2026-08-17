@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.4";
+const VERSION = "3.5";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1048,7 +1048,7 @@ export default function App() {
   const todayPct = todayTarget > 0 ? Math.round((todayKcal / todayTarget) * 100) : 0;
   const badgeColor = todayPct <= 100 ? C.accent : C.negative;
 
-  const badgeNavyOk = todayPct <= 100 ? "#6FCFA0" : "#F4856A";
+  const badgeNavyOk = todayPct <= 100 ? "#fff" : C.negative;
   const badgeToday = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", border: "1px solid rgba(255,255,255,0.25)" }}
       title={`${Math.round(todayKcal)} sur ${todayTarget} kcal — clic pour aller à l'Agenda`}
@@ -3772,7 +3772,6 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
                   <Cell key={i}
                     fill={d.v === 0 ? C.divider
                       : metric === "sport" ? C.accent
-                      : metric === "net" ? C.accentDark
                       : (d.v <= cible ? C.accent : C.negative)} />
                 ))}
               </Bar>
