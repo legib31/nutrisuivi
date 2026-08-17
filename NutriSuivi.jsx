@@ -1325,7 +1325,7 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
       {crediterSport && credited > 0 && (
         <div style={{ ...S.miniMuted, fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
           {sportMode === "reparti"
-            ? `+${credited} kcal/jour lissés sur 7 jours (sport crédité).`
+            ? `+${credited} kcal/jour lissés sur ${sportSpreadDays ?? 7} jours (sport crédité).`
             : `+${credited} kcal crédités du sport (${partSport ?? 60} % de ${Math.round(sportKcal)} dépensées).`}
         </div>
       )}
