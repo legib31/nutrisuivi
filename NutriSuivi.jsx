@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.1";
+const VERSION = "3.2";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -739,6 +739,7 @@ export default function App() {
   const [sharedFoods, setSharedFoods] = useState([]);
   const [badgesSeen, setBadgesSeen] = useState([]);
   const [lastWeekAI, setLastWeekAI] = useState(null);
+  const [habitudes, setHabitudes] = useState([]);
 
   const allSports = useMemo(() => [...SPORTS, ...customSports], [customSports]);
 
@@ -799,6 +800,7 @@ export default function App() {
       setMonthReviewSeen(await sget("nutri:monthReviewSeen", ""));
       setBadgesSeen(await sget("nutri:badgesSeen", []));
       setLastWeekAI(await sget("nutri:lastWeekAI", null));
+      setHabitudes(await sget("nutri:habitudes", []));
       setLoaded(true);
       // Charge la base d'aliments partagée (asynchrone, non bloquant).
       if (typeof window !== "undefined" && window.NUTRI_SHARED_FOODS) {
@@ -835,6 +837,7 @@ export default function App() {
   useEffect(() => { if (loaded) sset("nutri:water", water); }, [water, loaded]);
   useEffect(() => { if (loaded) sset("nutri:badgesSeen", badgesSeen); }, [badgesSeen, loaded]);
   useEffect(() => { if (loaded) sset("nutri:lastWeekAI", lastWeekAI); }, [lastWeekAI, loaded]);
+  useEffect(() => { if (loaded) sset("nutri:habitudes", habitudes); }, [habitudes, loaded]);
 
   /* Détection de déblocage de badges → notification locale + toast. */
   useEffect(() => {
@@ -1062,20 +1065,20 @@ export default function App() {
       <StyleInject />
 
       {isDesktop && (
-        <header style={{ background: C.bg, borderBottom: `2px solid ${C.divider}`, position: "sticky", top: 0, zIndex: 5 }}>
+        <header style={{ background: C.navy, borderBottom: "none", position: "sticky", top: 0, zIndex: 5 }}>
           <div style={{ maxWidth: 1200, margin: "0 auto", padding: "20px 40px", display: "flex", alignItems: "center", gap: 40 }}>
-            <div style={{ ...S.logo, fontSize: 20 }}>NutriSuivi</div>
+            <div style={{ ...S.logo, fontSize: 20, color: "#fff" }}>NutriSuivi</div>
             <nav style={{ display: "flex", gap: 4, flex: 1 }}>
               {[["agenda", "Agenda"], ["semaine", "Semaine"], ["liste", "Liste"], ["graphique", "Graphique"], ["profil", "Profil"]].map(([id, label]) => (
                 <button key={id} onClick={() => setTab(id)}
-                  style={{ background: "none", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 14, fontWeight: tab === id ? 700 : 500, color: tab === id ? C.accent : C.ink, borderBottom: tab === id ? `2px solid ${C.accent}` : "2px solid transparent", marginBottom: -2 }}>
+                  style={{ background: "none", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: "'Archivo', sans-serif", fontSize: 14, fontWeight: tab === id ? 700 : 500, color: tab === id ? "#fff" : C.navyText, borderBottom: tab === id ? "2px solid #fff" : "2px solid transparent", marginBottom: -2 }}>
                   {label}
                 </button>
               ))}
             </nav>
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
               {badgeToday}
-              <div style={{ fontSize: 12, color: C.muted, textAlign: "right", lineHeight: 1.4 }}>
+              <div style={{ fontSize: 12, color: C.navyText, textAlign: "right", lineHeight: 1.4 }}>
                 <div>{dateHeader}</div>
                 <div>Objectif {profil.objectif} kg</div>
               </div>
@@ -1142,6 +1145,7 @@ export default function App() {
               customSports={customSports} setCustomSports={setCustomSports} poids={profil.poids}
               favMeals={favMeals} onDeleteFavorite={deleteFavorite} onRenameFavorite={renameFavorite}
               onUpdateFavorite={updateFavorite}
+              habitudes={habitudes} setHabitudes={setHabitudes}
               sharedCount={sharedFoods.length} totalCount={catalog.length} />
           </div>
         )}
@@ -2658,7 +2662,7 @@ function SportSheet({ sports, poids, date, onClose, onAdd, onCreate }) {
 }
 
 /* ============================= LISTE ============================= */
-function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite, onUpdateFavorite, sharedCount = 0, totalCount = 0 }) {
+function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSports, poids, favMeals, onDeleteFavorite, onRenameFavorite, onUpdateFavorite, habitudes = [], setHabitudes, sharedCount = 0, totalCount = 0 }) {
   const [view, setView] = useState("aliments");
   const [q, setQ] = useState("");
   const [form, setForm] = useState(null);
@@ -2699,7 +2703,7 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", gap: 8, padding: "0 4px", flexWrap: "wrap" }}>
-        {[["aliments", "Aliments"], ["recettes", "Recettes"], ["partages", "Repas partagés"], ["sport", "Sport"], ["favoris", "Favoris"]].map(([k, l]) => (
+        {[["aliments", "Aliments"], ["recettes", "Recettes"], ["habitudes", "Habitudes"], ["partages", "Repas partagés"], ["sport", "Sport"], ["favoris", "Favoris"]].map(([k, l]) => (
           <button key={k} onClick={() => setView(k)} style={{ ...S.tabPill, ...(view === k ? S.tabPillOn : {}) }}>{l}</button>
         ))}
       </div>
@@ -2850,6 +2854,10 @@ function Liste({ catalog, customFoods, setCustomFoods, customSports, setCustomSp
 
       {view === "recettes" && (
         <RecettesView catalog={catalog} customFoods={customFoods} setCustomFoods={setCustomFoods} />
+      )}
+
+      {view === "habitudes" && (
+        <HabitudesView habitudes={habitudes} setHabitudes={setHabitudes} catalog={catalog} />
       )}
 
       {view === "partages" && (
@@ -3024,6 +3032,151 @@ function RecettesView({ catalog, customFoods, setCustomFoods }) {
         </div>
       ))}
     </>
+  );
+}
+
+/* Habitudes personnelles : combos d'aliments récurrents (ex: parmesan 30g → pâtes). */
+function HabitudesView({ habitudes, setHabitudes, catalog }) {
+  const [form, setForm] = useState(null); // null | { nom, items: [{label, grams}] }
+  const [newItem, setNewItem] = useState({ label: "", grams: "" });
+  const [openId, setOpenId] = useState(null);
+  const [editId, setEditId] = useState(null);
+
+  function addHabitude() {
+    if (!form || !form.nom.trim()) return;
+    const h = { id: "h_" + uid(), nom: form.nom.trim(), items: form.items || [] };
+    setHabitudes((prev) => [...prev, h]);
+    setForm(null); setNewItem({ label: "", grams: "" });
+  }
+
+  function addItem() {
+    if (!newItem.label.trim()) return;
+    setForm((f) => ({ ...f, items: [...(f.items || []), { label: newItem.label.trim(), grams: Number(newItem.grams) || 0 }] }));
+    setNewItem({ label: "", grams: "" });
+  }
+
+  function removeItem(i) { setForm((f) => ({ ...f, items: f.items.filter((_, j) => j !== i) })); }
+
+  function deleteHabitude(id) { setHabitudes((prev) => prev.filter((h) => h.id !== id)); }
+
+  function startEdit(h) {
+    setEditId(h.id);
+    setForm({ nom: h.nom, items: [...h.items] });
+    setNewItem({ label: "", grams: "" });
+  }
+
+  function saveEdit() {
+    if (!form || !form.nom.trim()) return;
+    setHabitudes((prev) => prev.map((h) => h.id === editId ? { ...h, nom: form.nom.trim(), items: form.items || [] } : h));
+    setEditId(null); setForm(null); setNewItem({ label: "", grams: "" });
+  }
+
+  const isEditing = editId !== null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button style={S.addSmall} onClick={() => { setForm(form && !isEditing ? null : { nom: "", items: [] }); setEditId(null); setNewItem({ label: "", grams: "" }); }}>
+          {form && !isEditing ? "Fermer" : "＋ Nouvelle habitude"}
+        </button>
+      </div>
+
+      {(form && !isEditing) && (
+        <div style={{ ...S.cardFramed, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={S.sectionLabel}>Nouvelle habitude</div>
+          <input style={S.input} placeholder="Nom (ex: Pâtes au parmesan)" value={form.nom}
+            onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+          <div style={S.sectionLabel}>Ingrédients</div>
+          {(form.items || []).map((item, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.grams > 0 && <span style={{ color: C.muted }}>{item.grams} g</span>}
+              <button onClick={() => removeItem(i)} style={S.del}>×</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 6 }}>
+            <input style={{ ...S.input, flex: 2 }} placeholder="Aliment (ex: Parmesan)" value={newItem.label}
+              onChange={(e) => setNewItem((n) => ({ ...n, label: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && addItem()} />
+            <input style={{ ...S.input, flex: 1 }} placeholder="g" type="number" min="0" value={newItem.grams}
+              onChange={(e) => setNewItem((n) => ({ ...n, grams: e.target.value }))}
+              onKeyDown={(e) => e.key === "Enter" && addItem()} />
+            <button onClick={addItem} style={{ ...S.addSmall, flexShrink: 0 }}>＋</button>
+          </div>
+          <button style={{ padding: "11px 0", border: "none", background: C.accent, color: "#fff", fontFamily: "'Archivo',sans-serif", fontWeight: 700, cursor: "pointer", fontSize: 14 }}
+            onClick={addHabitude}>Enregistrer</button>
+        </div>
+      )}
+
+      {habitudes.length === 0 && !form && (
+        <div style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: "40px 20px" }}>
+          Aucune habitude enregistrée.<br />Crée ta première habitude — ex: « Café du matin : lait 150 ml + sucre 5 g »
+        </div>
+      )}
+
+      {habitudes.map((h) => (
+        <div key={h.id}>
+          {editId === h.id && form ? (
+            <div style={{ ...S.cardFramed, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={S.sectionLabel}>Modifier : {h.nom}</div>
+              <input style={S.input} placeholder="Nom" value={form.nom}
+                onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+              <div style={S.sectionLabel}>Ingrédients</div>
+              {(form.items || []).map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.grams > 0 && <span style={{ color: C.muted }}>{item.grams} g</span>}
+                  <button onClick={() => removeItem(i)} style={S.del}>×</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", gap: 6 }}>
+                <input style={{ ...S.input, flex: 2 }} placeholder="Aliment" value={newItem.label}
+                  onChange={(e) => setNewItem((n) => ({ ...n, label: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && addItem()} />
+                <input style={{ ...S.input, flex: 1 }} placeholder="g" type="number" min="0" value={newItem.grams}
+                  onChange={(e) => setNewItem((n) => ({ ...n, grams: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && addItem()} />
+                <button onClick={addItem} style={{ ...S.addSmall, flexShrink: 0 }}>＋</button>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={{ flex: 1, padding: "10px 0", border: `1px solid ${C.divider}`, background: "#fff", cursor: "pointer", fontFamily: "'Archivo',sans-serif" }}
+                  onClick={() => { setEditId(null); setForm(null); }}>Annuler</button>
+                <button style={{ flex: 1, padding: "10px 0", border: "none", background: C.accent, color: "#fff", fontFamily: "'Archivo',sans-serif", fontWeight: 700, cursor: "pointer" }}
+                  onClick={saveEdit}>Sauvegarder</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ ...S.cardFramed, cursor: "pointer" }} onClick={() => setOpenId(openId === h.id ? null : h.id)}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{h.nom}</div>
+                  {h.items.length > 0 && <div style={{ ...S.miniMuted, marginTop: 2 }}>{h.items.length} ingrédient{h.items.length > 1 ? "s" : ""}</div>}
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button onClick={(e) => { e.stopPropagation(); startEdit(h); }}
+                    style={{ background: "none", border: `1px solid ${C.divider}`, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontFamily: "'Archivo',sans-serif", color: C.accent }}>
+                    Modifier
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); deleteHabitude(h.id); }}
+                    style={S.del}>×</button>
+                  <span style={{ color: C.muted, fontSize: 18 }}>{openId === h.id ? "▲" : "▼"}</span>
+                </div>
+              </div>
+              {openId === h.id && h.items.length > 0 && (
+                <div style={{ marginTop: 12, borderTop: `1px solid ${C.divider}`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {h.items.map((item, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span>{item.label}</span>
+                      {item.grams > 0 && <span style={{ color: C.muted, fontWeight: 600 }}>{item.grams} g</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -3967,7 +4120,10 @@ function Profil({ profil, setProfil, bmr, maintenance, cible, cibleProt, poidsLo
         <div style={S.sectionLabel}>Motivation principale</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {Object.entries(MOTIVATION).map(([k, v]) => (
-            <button key={k} onClick={() => set("motivation")(k)}
+            <button key={k} onClick={() => setProfil((p) => ({
+              ...p, motivation: k,
+              deficit: k === "maintien" ? 0 : k === "prise" ? -300 : (p.motivation === "maintien" || p.motivation === "prise" ? 500 : p.deficit),
+            }))}
               style={{ ...S.radioRow, alignItems: "flex-start", ...((profil.motivation || "perte") === k ? S.radioOn : {}) }}>
               <span style={{ textAlign: "left" }}>
                 <span style={{ display: "block" }}>{v.label}</span>
@@ -5239,6 +5395,8 @@ const C = {
   accent: "#235C86",
   accentDark: "#184863",
   accentTint: "#E4EDF3",
+  navy: "#0D2740",
+  navyText: "rgba(255,255,255,0.70)",
   positive: "#2C6E49",
   negative: "#C0562B",
   // Alias historiques — pointent vers la nouvelle palette pour ne rien casser
@@ -5251,9 +5409,9 @@ const C = {
 const S = {
   app: { maxWidth: 480, margin: "0 auto", minHeight: "100vh", background: C.bg, color: C.ink,
     fontFamily: "'Archivo', system-ui, sans-serif", display: "flex", flexDirection: "column", position: "relative" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 18px 12px", position: "sticky", top: 0, zIndex: 5, background: C.bg },
-  logo: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif", color: C.ink },
-  sub: { fontSize: 12, color: C.muted, marginTop: 2 },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 18px 12px", position: "sticky", top: 0, zIndex: 5, background: C.navy },
+  logo: { fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", fontFamily: "'Archivo', sans-serif", color: "#fff" },
+  sub: { fontSize: 12, color: C.navyText, marginTop: 2 },
   main: { flex: 1, padding: "4px 14px 96px", overflowY: "auto" },
   // Cartes = surface blanche plate, aucun radius ni ombre
   card: { background: C.card, borderRadius: 0, padding: 18, border: "none" },
