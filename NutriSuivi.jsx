@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.2";
+const VERSION = "3.3";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1048,14 +1048,15 @@ export default function App() {
   const todayPct = todayTarget > 0 ? Math.round((todayKcal / todayTarget) * 100) : 0;
   const badgeColor = todayPct <= 100 ? C.accent : C.negative;
 
+  const badgeNavyOk = todayPct <= 100 ? "#6FCFA0" : "#F4856A";
   const badgeToday = (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", border: `1px solid ${C.divider}` }}
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px", border: "1px solid rgba(255,255,255,0.25)" }}
       title={`${Math.round(todayKcal)} sur ${todayTarget} kcal — clic pour aller à l'Agenda`}
       onClick={() => setTab("agenda")}>
-      <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, cursor: "pointer" }}>Aujourd'hui</div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: badgeColor, letterSpacing: "-0.01em", cursor: "pointer" }}>{todayPct} %</div>
-      <div style={{ width: 60, height: 5, background: C.divider, cursor: "pointer" }}>
-        <div style={{ width: `${Math.min(100, todayPct)}%`, height: "100%", background: badgeColor }} />
+      <div style={{ fontSize: 11, color: C.navyText, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, cursor: "pointer" }}>Aujourd'hui</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: badgeNavyOk, letterSpacing: "-0.01em", cursor: "pointer" }}>{todayPct} %</div>
+      <div style={{ width: 60, height: 5, background: "rgba(255,255,255,0.18)", cursor: "pointer" }}>
+        <div style={{ width: `${Math.min(100, todayPct)}%`, height: "100%", background: badgeNavyOk }} />
       </div>
     </div>
   );
