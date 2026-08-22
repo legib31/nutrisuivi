@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.6";
+const VERSION = "3.7";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1154,7 +1154,8 @@ export default function App() {
           <div style={{ maxWidth: isDesktop ? 760 : "none", margin: "0 auto" }}>
             <Graphique diary={diary} cible={cible} poidsLog={poidsLog} objectif={profil.objectif} sport={sport}
               maintenance={maintenance} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
-              sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7} />
+              sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7}
+              onSelectDate={(date) => { setDateSel(date); setTab("agenda"); }} />
           </div>
         )}
         {tab === "profil" && (
@@ -3570,7 +3571,7 @@ function NumIn({ label, v, on }) {
 }
 
 /* =========================== GRAPHIQUE ========================== */
-function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, crediterSport, partSport, sportMode, sportSpreadDays }) {
+function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, crediterSport, partSport, sportMode, sportSpreadDays, onSelectDate }) {
   const [metric, setMetric] = useState("calories"); // calories | net | poids
   const [gran, setGran] = useState("semaine");       // semaine | mois
   const [zoom, setZoom] = useState(0);               // index dans les fenêtres
@@ -3758,7 +3759,9 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
               {gran === "semaine" && <Line type="monotone" dataKey="ma" stroke={C.accentDark} strokeWidth={1.5} strokeDasharray="4 4" dot={false} />}
             </LineChart>
           ) : (
-            <BarChart data={data} margin={{ top: 24, right: 24, left: 0, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 24, right: 24, left: 0, bottom: 0 }}
+              onClick={(e) => { if (gran === "semaine" && e && e.activePayload && e.activePayload[0] && e.activePayload[0].payload.date) onSelectDate && onSelectDate(e.activePayload[0].payload.date); }}
+              style={{ cursor: gran === "semaine" ? "pointer" : "default" }}>
               <CartesianGrid strokeDasharray="0" stroke={C.divider} vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={{ stroke: C.divider }} tickLine={false} interval={xInterval} angle={xAngle} textAnchor={xAngle ? "end" : "middle"} height={xHeight} />
               <YAxis tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={false} tickLine={false} width={36} />
@@ -3768,8 +3771,8 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
                   label={{ value: `Cible ${cible}`, position: "right", fill: C.positive, fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
               )}
               {(metric === "calories" || metric === "net") && maintenance > cible && (
-                <ReferenceLine y={maintenance} stroke="#D97706" strokeDasharray="6 3" strokeWidth={1.5}
-                  label={{ value: `Maint. ${maintenance}`, position: "right", fill: "#D97706", fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
+                <ReferenceLine y={maintenance} stroke="#B87A2A" strokeDasharray="6 3" strokeWidth={1.5}
+                  label={{ value: `Maint. ${maintenance}`, position: "right", fill: "#B87A2A", fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
               )}
               <Bar dataKey="v" radius={0} fill={C.positive}>
                 {data.map((d, i) => (
@@ -3778,8 +3781,8 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
                       : metric === "sport" ? C.accent
                       : metric === "poids" ? C.accent
                       : d.v <= cible ? C.positive
-                      : d.v <= maintenance ? "#D97706"
-                      : C.negative} />
+                      : d.v <= maintenance ? "#C8922A"
+                      : "#E02020"} />
                 ))}
               </Bar>
             </BarChart>
