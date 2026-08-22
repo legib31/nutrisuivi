@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.5";
+const VERSION = "3.6";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -3764,15 +3764,22 @@ function Graphique({ diary, cible, poidsLog, objectif, sport, maintenance, credi
               <YAxis tick={{ fontSize: 10, fill: C.muted, fontFamily: "Archivo" }} axisLine={false} tickLine={false} width={36} />
               <Tooltip formatter={(v) => [`${v} kcal`, ""]} contentStyle={S.tooltip} labelStyle={{ color: C.muted }} cursor={{ fill: C.accentTint }} />
               {metric !== "sport" && (
-                <ReferenceLine y={refLine} stroke={C.accent} strokeDasharray="4 4" strokeWidth={1.5}
-                  label={{ value: `Cible ${refLine}`, position: "right", fill: C.accent, fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
+                <ReferenceLine y={cible} stroke={C.positive} strokeDasharray="0" strokeWidth={1.5}
+                  label={{ value: `Cible ${cible}`, position: "right", fill: C.positive, fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
               )}
-              <Bar dataKey="v" radius={0} fill={metric === "net" ? C.accentDark : C.accent}>
+              {(metric === "calories" || metric === "net") && maintenance > cible && (
+                <ReferenceLine y={maintenance} stroke="#D97706" strokeDasharray="6 3" strokeWidth={1.5}
+                  label={{ value: `Maint. ${maintenance}`, position: "right", fill: "#D97706", fontSize: 11, fontFamily: "Archivo", fontWeight: 700 }} />
+              )}
+              <Bar dataKey="v" radius={0} fill={C.positive}>
                 {data.map((d, i) => (
                   <Cell key={i}
                     fill={d.v === 0 ? C.divider
                       : metric === "sport" ? C.accent
-                      : (d.v <= cible ? C.accent : C.negative)} />
+                      : metric === "poids" ? C.accent
+                      : d.v <= cible ? C.positive
+                      : d.v <= maintenance ? "#D97706"
+                      : C.negative} />
                 ))}
               </Bar>
             </BarChart>
