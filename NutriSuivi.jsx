@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.7";
+const VERSION = "3.8";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1130,12 +1130,14 @@ export default function App() {
             onDelSport={delSport} crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
             sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7} onEditEntry={setEditData}
             onSaveFavorite={saveFavorite} onDuplicatePrev={duplicatePrevDay} isDesktop={isDesktop}
+            maintenance={maintenance}
             water={water[dateSel] || 0} waterGoal={profil.waterGoal ?? 8} onAddWater={addWater} />
         )}
         {tab === "semaine" && (
           <div style={{ maxWidth: isDesktop ? 760 : "none", margin: "0 auto" }}>
             <Semaine diary={diary} sport={sport} poidsLog={poidsLog} water={water}
               cible={cible} cibleProt={cibleProt} cibleLipMin={cibleLipMin}
+              maintenance={maintenance}
               waterGoal={profil.waterGoal ?? 8}
               lastWeekAI={lastWeekAI} setLastWeekAI={setLastWeekAI} />
           </div>
@@ -1207,7 +1209,7 @@ export default function App() {
 }
 
 /* ============================ AGENDA ============================= */
-function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, onAddDirect, catalog, favMeals, onAddFavorite, copyFromDate, monthReview, onDismissMonthReview, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, sportSpreadDays, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, water, waterGoal, onAddWater }) {
+function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, cibleLipMin, onDel, onAdd, onEditGrams, onAddDirect, catalog, favMeals, onAddFavorite, copyFromDate, monthReview, onDismissMonthReview, mealPhotos, onMealPhoto, onClearMealPhoto, sportAll, sportEntries, onAddSport, onDelSport, crediterSport, partSport, sportMode, sportSpreadDays, onEditEntry, onSaveFavorite, onDuplicatePrev, isDesktop, maintenance, water, waterGoal, onAddWater }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(dateSel); return { y: d.getFullYear(), m: d.getMonth() }; });
   const sportKcal = sommeSport(sportEntries);
   const credited = crediterSport ? creditedKcal(dateSel, sportAll, partSport, sportMode, sportSpreadDays) : 0;
@@ -1322,7 +1324,7 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
         {kcalRestantes >= 0 ? kcalRestantes : `+${-kcalRestantes}`}
       </div>
       <div style={{ ...S.miniMuted, marginTop: 8, fontSize: 13 }}>
-        {kcalRestantes >= 0 ? "kcal restantes" : "kcal au-dessus"} · {kcalConsommees} sur {cibleJour} kcal consommées · {pct} %
+        {kcalRestantes >= 0 ? "kcal restantes" : "kcal au-dessus"} · {kcalConsommees} sur {cibleJour} kcal consommées · {pct} %{maintenance ? ` · maintien ${maintenance} kcal` : ""}
       </div>
 
       <div style={{ height: 8, background: C.divider, marginTop: 22 }}>
@@ -5284,7 +5286,7 @@ function WeeklyAI({ days, diary, sport, cible, cibleProt, cibleLipMin, weightDel
   );
 }
 
-function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin, waterGoal, lastWeekAI, setLastWeekAI }) {
+function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin, maintenance, waterGoal, lastWeekAI, setLastWeekAI }) {
   const [offset, setOffset] = useState(0); // 0 = semaine courante, -1 = semaine précédente, etc.
   const today = todayISO();
   const dow = (new Date(today).getDay() + 6) % 7;
@@ -5365,7 +5367,7 @@ function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin,
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Stat label="MOYENNE KCAL / JOUR" value={avgKcal || "—"} sub={`cible ${cible}`} color={avgKcal && avgKcal <= cible ? C.accent : C.negative} />
+        <Stat label="MOYENNE KCAL / JOUR" value={avgKcal || "—"} sub={`cible ${cible} · maintien ${maintenance}`} color={avgKcal && avgKcal <= cible ? C.accent : C.negative} />
         <Stat label="JOURS DANS LA CIBLE" value={`${inTarget}/${logged.length || 0}`} sub="jours loggés sous la cible" color={C.accent} />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
