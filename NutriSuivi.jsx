@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.9";
+const VERSION = "3.10";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -2258,6 +2258,11 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
   const habVisible = nq ? habitudes.filter((h) => norm(h.nom).includes(nq)) : habitudes;
 
   function addHabitude(h) {
+    if (h.kcal > 0) {
+      onAddMany([{ id: uid(), repas, nom: h.nom, grams: 100, kcal: h.kcal, p: 0, c: 0, f: 0, fib: 0, suc: 0 }]);
+      onClose();
+      return;
+    }
     const notFound = [];
     const entries = (h.items || []).map((item) => {
       const nl = norm(item.label);
@@ -2429,7 +2434,9 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
                     <button onClick={() => addHabitude(h)}
                       style={{ flex: 1, textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14, color: C.accent }}>🍽 {h.nom}</div>
-                      <div style={S.miniMuted}>{h.items.length} ingrédient{h.items.length > 1 ? "s" : ""}</div>
+                      <div style={S.miniMuted}>
+                        {h.kcal > 0 ? `${h.kcal} kcal` : `${h.items.length} ingrédient${h.items.length > 1 ? "s" : ""}`}
+                      </div>
                     </button>
                   </div>
                 ))}
@@ -3080,7 +3087,7 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
 
   function addHabitude() {
     if (!form || !form.nom.trim()) return;
-    const h = { id: "h_" + uid(), nom: form.nom.trim(), items: form.items || [] };
+    const h = { id: "h_" + uid(), nom: form.nom.trim(), items: form.items || [], kcal: Number(form.kcal) || 0 };
     setHabitudes((prev) => [...prev, h]);
     setForm(null); setNewItem({ label: "", grams: "" });
   }
@@ -3097,13 +3104,13 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
 
   function startEdit(h) {
     setEditId(h.id);
-    setForm({ nom: h.nom, items: [...h.items] });
+    setForm({ nom: h.nom, items: [...h.items], kcal: h.kcal || 0 });
     setNewItem({ label: "", grams: "" });
   }
 
   function saveEdit() {
     if (!form || !form.nom.trim()) return;
-    setHabitudes((prev) => prev.map((h) => h.id === editId ? { ...h, nom: form.nom.trim(), items: form.items || [] } : h));
+    setHabitudes((prev) => prev.map((h) => h.id === editId ? { ...h, nom: form.nom.trim(), items: form.items || [], kcal: Number(form.kcal) || 0 } : h));
     setEditId(null); setForm(null); setNewItem({ label: "", grams: "" });
   }
 
@@ -3112,7 +3119,7 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button style={S.addSmall} onClick={() => { setForm(form && !isEditing ? null : { nom: "", items: [] }); setEditId(null); setNewItem({ label: "", grams: "" }); }}>
+        <button style={S.addSmall} onClick={() => { setForm(form && !isEditing ? null : { nom: "", items: [], kcal: 0 }); setEditId(null); setNewItem({ label: "", grams: "" }); }}>
           {form && !isEditing ? "Fermer" : "＋ Nouvelle habitude"}
         </button>
       </div>
@@ -3122,6 +3129,12 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
           <div style={S.sectionLabel}>Nouvelle habitude</div>
           <input style={S.input} placeholder="Nom (ex: Pâtes au parmesan)" value={form.nom}
             onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+          <div style={S.sectionLabel}>Kcal totales du plat (optionnel)</div>
+          <input style={S.input} placeholder="ex: 650" type="number" min="0" value={form.kcal || ""}
+            onChange={(e) => setForm((f) => ({ ...f, kcal: e.target.value }))} />
+          <div style={{ ...S.miniMuted, fontSize: 11, marginTop: -4 }}>
+            Si rempli, cette valeur sera utilisée directement quand tu ajoutes l'habitude à un repas.
+          </div>
           <div style={S.sectionLabel}>Ingrédients</div>
           {(form.items || []).map((item, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
@@ -3157,6 +3170,9 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
               <div style={S.sectionLabel}>Modifier : {h.nom}</div>
               <input style={S.input} placeholder="Nom" value={form.nom}
                 onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+              <div style={S.sectionLabel}>Kcal totales du plat (optionnel)</div>
+              <input style={S.input} placeholder="ex: 650" type="number" min="0" value={form.kcal || ""}
+                onChange={(e) => setForm((f) => ({ ...f, kcal: e.target.value }))} />
               <div style={S.sectionLabel}>Ingrédients</div>
               {(form.items || []).map((item, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
@@ -3186,7 +3202,11 @@ function HabitudesView({ habitudes, setHabitudes, catalog }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{h.nom}</div>
-                  {h.items.length > 0 && <div style={{ ...S.miniMuted, marginTop: 2 }}>{h.items.length} ingrédient{h.items.length > 1 ? "s" : ""}</div>}
+                  <div style={{ ...S.miniMuted, marginTop: 2 }}>
+                    {h.kcal > 0 && <span style={{ color: C.accent, fontWeight: 700 }}>{h.kcal} kcal</span>}
+                    {h.kcal > 0 && h.items.length > 0 && " · "}
+                    {h.items.length > 0 && `${h.items.length} ingrédient${h.items.length > 1 ? "s" : ""}`}
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <button onClick={(e) => { e.stopPropagation(); startEdit(h); }}
