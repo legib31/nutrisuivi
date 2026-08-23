@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.10";
+const VERSION = "3.11";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1325,7 +1325,7 @@ function Agenda({ diary, dateSel, setDateSel, tot, cible, cibleProt, cibleGluc, 
         {kcalRestantes >= 0 ? kcalRestantes : `+${-kcalRestantes}`}
       </div>
       <div style={{ ...S.miniMuted, marginTop: 8, fontSize: 13 }}>
-        {kcalRestantes >= 0 ? "kcal restantes" : "kcal au-dessus"} · {kcalConsommees} sur {cibleJour} kcal consommées · {pct} %{maintenance ? ` · maintien ${maintenance} kcal` : ""}
+        {kcalRestantes >= 0 ? "kcal restantes" : "kcal au-dessus"} · {kcalConsommees} sur {cibleJour} kcal consommées · {pct} %{maintenance ? ` · maintien ${maintenance + credited} kcal` : ""}
       </div>
 
       <div style={{ height: 8, background: C.divider, marginTop: 22 }}>
