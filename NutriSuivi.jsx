@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.11";
+const VERSION = "3.12";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1138,6 +1138,8 @@ export default function App() {
             <Semaine diary={diary} sport={sport} poidsLog={poidsLog} water={water}
               cible={cible} cibleProt={cibleProt} cibleLipMin={cibleLipMin}
               maintenance={maintenance}
+              crediterSport={profil.crediterSport} partSport={profil.partSport ?? 60}
+              sportMode={profil.sportMode ?? "jour"} sportSpreadDays={profil.sportSpreadDays ?? 7}
               waterGoal={profil.waterGoal ?? 8}
               lastWeekAI={lastWeekAI} setLastWeekAI={setLastWeekAI} />
           </div>
@@ -5337,7 +5339,7 @@ function WeeklyAI({ days, diary, sport, cible, cibleProt, cibleLipMin, weightDel
   );
 }
 
-function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin, maintenance, waterGoal, lastWeekAI, setLastWeekAI }) {
+function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin, maintenance, crediterSport, partSport, sportMode, sportSpreadDays, waterGoal, lastWeekAI, setLastWeekAI }) {
   const [offset, setOffset] = useState(0); // 0 = semaine courante, -1 = semaine précédente, etc.
   const today = todayISO();
   const dow = (new Date(today).getDay() + 6) % 7;
@@ -5347,7 +5349,11 @@ function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin,
   const logged = passed.filter((d) => (diary[d] || []).length > 0);
   const kcals = logged.map((d) => sommeMacros(diary[d]).kcal);
   const avgKcal = kcals.length ? Math.round(kcals.reduce((a, b) => a + b, 0) / kcals.length) : 0;
-  const inTarget = logged.filter((d) => sommeMacros(diary[d]).kcal <= cible).length;
+  const creditedFor = (d) => crediterSport ? creditedKcal(d, sport, partSport, sportMode, sportSpreadDays) : 0;
+  const avgCredited = logged.length ? Math.round(logged.reduce((a, d) => a + creditedFor(d), 0) / logged.length) : 0;
+  const cibleAvg = cible + avgCredited;
+  const maintenanceAvg = maintenance + avgCredited;
+  const inTarget = logged.filter((d) => sommeMacros(diary[d]).kcal <= cible + creditedFor(d)).length;
   const sportKcal = Math.round(days.reduce((a, d) => a + sommeSport(sport[d]), 0));
   const waterAvg = passed.length ? (passed.reduce((a, d) => a + (water[d] || 0), 0) / passed.length) : 0;
 
@@ -5418,7 +5424,7 @@ function Semaine({ diary, sport, poidsLog, water, cible, cibleProt, cibleLipMin,
       </div>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Stat label="MOYENNE KCAL / JOUR" value={avgKcal || "—"} sub={`cible ${cible} · maintien ${maintenance}`} color={avgKcal && avgKcal <= cible ? C.accent : C.negative} />
+        <Stat label="MOYENNE KCAL / JOUR" value={avgKcal || "—"} sub={`cible ${cibleAvg} · maintien ${maintenanceAvg}`} color={avgKcal && avgKcal <= cibleAvg ? C.accent : C.negative} />
         <Stat label="JOURS DANS LA CIBLE" value={`${inTarget}/${logged.length || 0}`} sub="jours loggés sous la cible" color={C.accent} />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
