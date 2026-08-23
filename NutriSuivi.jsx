@@ -573,7 +573,7 @@ const REPAS = [
 ];
 const MEAL_COLORS = { petitdej: "#E0912F", collation: "#6B4EA8", midi: "#2F80B5", soir: "#C0398C" };
 const SPORT_COLOR = "#3E9CA8";
-const VERSION = "3.8";
+const VERSION = "3.9";
 function repasIncomplets(diary, date) {
   const items = diary[date] || [];
   return ["petitdej", "midi", "soir"].filter((id) => !items.some((e) => e.repas === id));
@@ -1176,7 +1176,8 @@ export default function App() {
       {addOpen && (
         <AddSheet key={addRepas} catalog={catalog} date={dateSel} onCreateFood={addCustomFood} initialRepas={addRepas}
           onClose={() => setAddOpen(false)} onAdd={addEntry}
-          diary={diary} favMeals={favMeals} onAddFavorite={addFavoriteToDay} onDeleteFavorite={deleteFavorite} onAddMany={addEntries} />
+          diary={diary} favMeals={favMeals} onAddFavorite={addFavoriteToDay} onDeleteFavorite={deleteFavorite} onAddMany={addEntries}
+          habitudes={habitudes} />
       )}
 
       {editData && (
@@ -2225,7 +2226,7 @@ function PhotoEstimate({ date, onClose, onAddMany, initialRepas }) {
   );
 }
 
-function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals, onAddFavorite, onDeleteFavorite, onAddMany, initialRepas }) {
+function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals, onAddFavorite, onDeleteFavorite, onAddMany, initialRepas, habitudes = [] }) {
   const [repas, setRepas] = useState(initialRepas || "soir");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
@@ -2254,6 +2255,22 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
 
   const nq = norm(q);
   const liste = catalog.filter((f) => norm(f.nom).includes(nq));
+  const habVisible = nq ? habitudes.filter((h) => norm(h.nom).includes(nq)) : habitudes;
+
+  function addHabitude(h) {
+    const notFound = [];
+    const entries = (h.items || []).map((item) => {
+      const nl = norm(item.label);
+      const food = catalog.find((f) => norm(f.nom) === nl) || catalog.find((f) => norm(f.nom).includes(nl) || nl.includes(norm(f.nom)));
+      const g = Number(item.grams) || 100;
+      const factor = g / 100;
+      if (!food) { notFound.push(item.label); return { id: uid(), repas, nom: item.label, grams: g, kcal: 0, p: 0, c: 0, f: 0, fib: 0, suc: 0 }; }
+      return { id: uid(), repas, foodId: food.id, nom: food.nom, grams: g, kcal: (food.kcal || 0) * factor, p: (food.p || 0) * factor, c: (food.c || 0) * factor, f: (food.f || 0) * factor, fib: (food.fib || 0) * factor, suc: (food.suc || 0) * factor };
+    });
+    onAddMany(entries);
+    if (notFound.length) window.alert(`Non trouvés dans ta liste d'aliments (kcal = 0) : ${notFound.join(", ")}.`);
+    onClose();
+  }
   const recents = useMemo(() => {
     const seen = [];
     const dates = Object.keys(diary || {}).sort().reverse();
@@ -2400,6 +2417,20 @@ function AddSheet({ catalog, date, onClose, onAdd, onCreateFood, diary, favMeals
                       <div style={S.miniMuted}>{fav.items.length} aliments · {Math.round(fav.items.reduce((a, i) => a + i.kcal, 0))} kcal</div>
                     </button>
                     <button style={S.del} onClick={() => onDeleteFavorite(fav.id)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {habVisible.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={S.sectionLabel}>Mes habitudes → {(REPAS.find((r) => r.id === repas) || {}).label}</div>
+                {habVisible.map((h) => (
+                  <div key={h.id} style={S.entryRow}>
+                    <button onClick={() => addHabitude(h)}
+                      style={{ flex: 1, textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: C.accent }}>🍽 {h.nom}</div>
+                      <div style={S.miniMuted}>{h.items.length} ingrédient{h.items.length > 1 ? "s" : ""}</div>
+                    </button>
                   </div>
                 ))}
               </div>
